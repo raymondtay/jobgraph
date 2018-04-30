@@ -1,8 +1,14 @@
-package hicoden.jobgraph
+package hicoden.jobgraph.examples
 
-// digraph [a -> b, a -> c, c -> d, b -> d]
-object ScatterGatherGraph {
+import akka.actor._
+import hicoden.jobgraph.engine._
 
+// digraph [a -> b,
+//          a -> c,
+//          c -> d,
+//          b -> d]
+object ScatterGatherGraph extends App {
+  import hicoden.jobgraph._
   import quiver._
 
   val jobA = Job("job-a")
@@ -24,11 +30,27 @@ object ScatterGatherGraph {
 
   val workflow = createWf(collection.immutable.Seq(node1, node2, node3, node4))(collection.immutable.Seq(e1, e2, e3, e4))
 
+  val actorSystem = ActorSystem("EngineSystem")
+  val engine = actorSystem.actorOf(Props(classOf[Engine]), "Engine")
+
+  // start a job graph running
+  engine ! StartWorkflow(workflow)
+
+  Thread.sleep(8000)
+
+  engine ! StopWorkflow(workflow.id)
+
+  Thread.sleep(4000)
+
+  // Stop the engine
+  actorSystem.terminate()
 }
 
-// digraph [a -> b, c -> b, d -> b]
-object ConvergeGraph {
-
+// digraph [a -> b,
+//          c -> b,
+//          d -> b]
+object ConvergeGraph extends App {
+  import hicoden.jobgraph._
   import quiver._
 
   val jobA = Job("job-a")
@@ -49,4 +71,18 @@ object ConvergeGraph {
 
   val workflow = createWf(collection.immutable.Seq(node1, node2, node3, node4))(collection.immutable.Seq(e1, e2, e3))
 
+  val actorSystem = ActorSystem("EngineSystem")
+  val engine = actorSystem.actorOf(Props(classOf[Engine]), "Engine")
+
+  // start a job graph running
+  engine ! StartWorkflow(workflow)
+
+  Thread.sleep(8000)
+
+  engine ! StopWorkflow(workflow.id)
+
+  Thread.sleep(4000)
+
+  // Stop the engine
+  actorSystem.terminate()
 }

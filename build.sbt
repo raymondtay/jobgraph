@@ -22,7 +22,8 @@ lazy val jobgraph = (project in file("."))
     libraryDependencies ++= (generalLibs ++ testLibs)
   ).enablePlugins(PackPlugin)
 
-coverageExcludedPackages := ""
+// Excluded the "examples" from the coverage
+coverageExcludedPackages := "hicoden\\.jobgraph\\.examples\\.*"
 
 // Need for the kind project so that i dont have to use type-lambdas
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4")

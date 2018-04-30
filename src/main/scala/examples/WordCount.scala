@@ -1,4 +1,4 @@
-package hicoden.jobgraph.example
+package hicoden.jobgraph.examples
 
 import com.spotify.scio._
 

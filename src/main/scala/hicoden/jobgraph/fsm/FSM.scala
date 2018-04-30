@@ -1,6 +1,7 @@
 package hicoden.jobgraph.fsm
 
-import hicoden.jobgraph.Job
+import hicoden.jobgraph.{Job, JobId, JobStates, WorkflowId}
+import hicoden.jobgraph.engine.UpdateWorkflow
 import akka.actor._
 import scala.concurrent.duration._
 
@@ -36,9 +37,8 @@ import scala.language.postfixOps
 // terminate the existing work.
 
 // Events
-case class StartRun(job : Job, engine: ActorRef)
+case class StartRun(wfId: WorkflowId, job : Job, engine: ActorRef)
 case object StopRun
-case object SS
 
 // States
 sealed trait State
@@ -49,23 +49,28 @@ case class Terminated(forced: Boolean = false) extends State
 // Data
 sealed trait Data
 case object Uninitialized extends Data
-case class StateData(x: Int) extends Data
+case class Processing(wfId: WorkflowId, job: Job, engineRef: ActorRef) extends Data
 
 class JobFSM extends LoggingFSM[State, Data] {
 
   startWith(Idle, Uninitialized)
 
-  when (Idle, stateTimeout = 1 second) {
-    case Event(SS, sss) =>
-      log.info("Got an SS msg")
-      goto(Active) using StateData(444444)
+  // TODO:
+  // (a) Lift timeout to configuration
+  // (b) List out the Engine-triggered events vs FSM internal events
+  when (Idle, stateTimeout = 2 second) {
+
+     case Event(StopRun, _) ⇒
+      log.info("Stopping run")
+      stop(FSM.Shutdown)
+
     case Event(StateTimeout, data) ⇒
       log.info("Timed out from idle, going to active")
-      goto(Active) using StateData(4444)
+      goto(Active) using Uninitialized
 
-    case Event(StartRun(job, engine), Uninitialized) ⇒
-      log.info("Received the job: {}", job)
-      stay
+    case Event(StartRun(wfId, job, engineActor), Uninitialized) ⇒
+      log.info("Received the job: {} for workflow: {}", job.id, wfId)
+      goto(Active) using Processing(wfId, job, engineActor)
   }
 
   onTransition {
@@ -75,26 +80,21 @@ class JobFSM extends LoggingFSM[State, Data] {
       log.info("entering 'Idle' from 'Active'")
   }
 
-  when(Active, stateTimeout = 1 second) {
-    case Event(SS, sss) =>
-      log.info("Got an SS msg")
-      stay
-    case Event(evt, StateData(x)) ⇒
-      log.info("Got this datum: {}, from the event: {}", x, evt)
-      goto(Idle)
-    case Event(StateTimeout, data) ⇒
-      log.info("Timed out after 1 seconds, going back to idle")
-      goto(Idle)
+  // TODO:
+  // (a) Lift timeout to configuration
+  // (b) List out the Engine-triggered events vs FSM internal events
+  when(Active, stateTimeout = 3 second) {
+
+    case Event(StopRun, _) ⇒
+      log.info("Stopping run")
+      stop(FSM.Shutdown)
+
+    case Event(StateTimeout, Processing(wfId, job, engineRef)) ⇒
+      log.info("Timed out after 3 seconds, going back to Idle")
+      engineRef ! UpdateWorkflow(wfId, job.id, JobStates.forced_termination)
+      goto(Idle) using Processing(wfId, job, engineRef)
   }
 
   initialize()
 }
 
-object FSM extends App {
-
-  val aS = ActorSystem("fsm")
-  val a = aS.actorOf(Props(classOf[JobFSM]))
-  a ! SS
-  Thread.sleep(5000)
-  aS.terminate
-}

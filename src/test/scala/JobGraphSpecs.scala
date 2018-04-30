@@ -1,10 +1,17 @@
 package hicoden.jobgraph
 
-/** 
-  * Factory object for the jobgraph
-  */
-object Graph extends App {
+import org.specs2._
+import org.scalacheck._
+import com.typesafe.config._
+import Arbitrary._
+import Gen.{containerOfN, choose, pick, mapOf, listOf, listOfN, oneOf}
+import Prop.{forAll, throws, AnyOperators}
 
+/**
+  * This data here generates the classical scatter-gather digraph involving 4
+  * imaginary job nodes a,b,c,d.
+  */
+object GraphDataScenarioA {
   import quiver._
 
   val jobA = Job("job-a")
@@ -12,17 +19,313 @@ object Graph extends App {
   val jobC = Job("job-c")
   val jobD = Job("job-d")
 
-  val node1 = LNode(jobA, "job-a")
-  val node2 = LNode(jobB, "job-b")
-  val node3 = LNode(jobC, "job-c")
-  val node4 = LNode(jobD, "job-d")
+  val nodes =
+    LNode(jobA, jobA.id) ::
+    LNode(jobB, jobB.id) ::
+    LNode(jobC, jobC.id) ::
+    LNode(jobD, jobD.id) :: Nil
 
-  val e1 = LEdge(jobA, jobB, "a -> b")
-  val e2 = LEdge(jobA, jobC, "a -> c")
-  val e3 = LEdge(jobC, jobD, "c -> d")
-  val e4 = LEdge(jobB, jobD, "b -> d")
+  val edges =
+    LEdge(jobA, jobB, "a -> b") ::
+    LEdge(jobA, jobC, "a -> c") ::
+    LEdge(jobC, jobD, "c -> d") ::
+    LEdge(jobB, jobD, "b -> d") :: Nil
 
-  val jobGraph = mkGraph(Seq(node1, node2, node3, node4), Seq(e1, e2, e3, e4))
+  def graphGen = WorkflowOps.createWf(nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq])
 
-  assert(jobGraph.successors(jobA).size == 2)
+  def workflowGen = for {
+    workflow ← oneOf(graphGen :: Nil)
+  } yield {
+    workflow
+  }
+
+  implicit val workflowArbGenerator = Arbitrary(workflowGen)
+}
+
+/**
+  * This data here generates the classical scatter-gather digraph involving 6
+  * imaginary job nodes a,b,c,d,e,f in 3 fictitious workflows
+  */
+object GraphDataScenarioB {
+  import quiver._
+
+  val jobA = Job("job-a")
+  val jobB = Job("job-b")
+  val jobC = Job("job-c")
+  val jobD = Job("job-d")
+  val jobE = Job("job-e")
+  val jobF = Job("job-f")
+
+  // see [[edgesA]] for the topology
+  val nodesA =
+    LNode(jobA, jobA.id) ::
+    LNode(jobB, jobB.id) ::
+    LNode(jobC, jobC.id) :: Nil
+
+  // see [[edgesB]] for the topology
+  val nodesB =
+    LNode(jobA, jobA.id) ::
+    LNode(jobB, jobB.id) ::
+    LNode(jobC, jobC.id) ::
+    LNode(jobD, jobD.id) :: Nil
+
+  // see [[edgesC]] for the topology
+  val nodesC =
+    LNode(jobA, jobA.id) ::
+    LNode(jobB, jobB.id) ::
+    LNode(jobC, jobC.id) ::
+    LNode(jobD, jobD.id) ::
+    LNode(jobE, jobE.id) ::
+    LNode(jobF, jobF.id) :: Nil
+
+  val edgesA =
+    LEdge(jobA, jobB, "a -> b") ::
+    LEdge(jobA, jobC, "a -> c") :: Nil
+
+  val edgesB =
+    LEdge(jobA, jobB, "a -> b") ::
+    LEdge(jobA, jobC, "a -> c") ::
+    LEdge(jobC, jobD, "c -> d") ::
+    LEdge(jobB, jobD, "b -> d") :: Nil
+
+  val edgesC =
+    LEdge(jobA, jobB, "a -> b") ::
+    LEdge(jobA, jobC, "a -> c") ::
+    LEdge(jobC, jobD, "c -> d") ::
+    LEdge(jobB, jobD, "b -> d") ::
+    LEdge(jobA, jobE, "a -> e") ::
+    LEdge(jobA, jobF, "a -> f") :: Nil
+
+  def graphGen = {
+    WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
+  }
+
+  def workflowGen = for {
+    workflow ← oneOf(graphGen :: Nil)
+  } yield {
+    workflow
+  }
+
+  implicit val workflowArbGenerator = Arbitrary(workflowGen)
+}
+
+/**
+  * This data here generates the classical scatter-gather digraph involving 6
+  * imaginary job nodes a,b,c,d,e,f in 3 fictitious workflows. Be aware that
+  * the test data is used for testing of discovering "the next jobs to start"
+  */
+object GraphDataScenarioC {
+  import quiver._
+
+  val jobA = Job("job-a")
+  val jobB = Job("job-b")
+  val jobC = Job("job-c")
+  val jobD = Job("job-d")
+  val jobE = Job("job-e")
+  val jobF = Job("job-f")
+
+  // see [[edgesA]] for the topology
+  val nodesA =
+    LNode(jobA, jobA.id) ::
+    LNode(jobB, jobB.id) ::
+    LNode(jobC, jobC.id) :: Nil
+
+  // see [[edgesB]] for the topology
+  val nodesB =
+    LNode(jobA, jobA.id) ::
+    LNode(jobB, jobB.id) ::
+    LNode(jobC, jobC.id) ::
+    LNode(jobD, jobD.id) :: Nil
+
+  // see [[edgesC]] for the topology
+  val nodesC =
+    LNode(jobA, jobA.id) ::
+    LNode(jobB, jobB.id) ::
+    LNode(jobC, jobC.id) ::
+    LNode(jobD, jobD.id) ::
+    LNode(jobE, jobE.id) ::
+    LNode(jobF, jobF.id) :: Nil
+
+  val edgesA =
+    LEdge(jobA, jobB, "a -> b") ::
+    LEdge(jobA, jobC, "a -> c") :: Nil
+
+  val edgesB =
+    LEdge(jobA, jobB, "a -> b") ::
+    LEdge(jobA, jobC, "a -> c") ::
+    LEdge(jobC, jobD, "c -> d") ::
+    LEdge(jobB, jobD, "b -> d") :: Nil
+
+  val edgesC =
+    LEdge(jobA, jobB, "a -> b") ::
+    LEdge(jobA, jobC, "a -> c") ::
+    LEdge(jobC, jobD, "c -> d") ::
+    LEdge(jobB, jobD, "b -> d") ::
+    LEdge(jobA, jobE, "a -> e") ::
+    LEdge(jobA, jobF, "a -> f") :: Nil
+
+  def graphGen = {
+    WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
+  }
+
+  def workflowGen = for {
+    workflow ← oneOf(graphGen :: Nil)
+  } yield {
+    workflow
+  }
+
+  implicit val workflowArbGenerator = Arbitrary(workflowGen)
+}
+
+
+/**
+ * Specifications for the workflows and the category of tests conducted here
+ * are related to the following:
+ *
+ * + Creating workflows
+ * + Updating workflows
+ * + Starting workflows
+ * + Stopping workflows
+ *
+ * Note: Using code + branch coverage, we cover as much as we possibly can.
+ *
+ * At the moment, the multigraph library we are leveraging offers us the
+ * capabilities to do all kinds of interesting graph problems like Spanning
+ * Trees but we do not provide any test coverage for those as we don't use
+ * them, yet.
+ *
+ *
+ * @author Raymond Tay
+ * @version 1.0
+ */
+class JobGraphSpecs extends mutable.Specification with ScalaCheck {
+  import quiver._
+
+  sequential // all specifications are run sequentially
+
+  val minimumNumberOfTests = 20
+  import cats._, data._, implicits._, Validated._
+
+  {
+    import GraphDataScenarioA.workflowArbGenerator
+    "JobGraphs, when created, would have a non-empty job graph and the create_timestamp is always earlier than the current timestamp" >> prop { (workflow: Workflow) ⇒
+      assert(workflow.create_timestamp isBefore java.time.Instant.now().plusNanos(3))
+      workflow.jobgraph.countNodes must be_>(0)
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioA.{jobD,workflowArbGenerator}
+    "Updating of ANY job of its state in the created workflow would be respected" >> prop { (workflow: Workflow) ⇒
+      assert(workflow.create_timestamp isBefore java.time.Instant.now().plusNanos(3))
+      WorkflowOps.updateWorkflow(workflow.id)(jobD.id)(JobStates.forced_termination)
+      workflow.jobgraph.countNodes must be_>(0)
+      workflow.jobgraph.bfs(jobD).head.state must be_==(JobStates.forced_termination)
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  // Tests for updating the workflow
+  //
+  {
+    import GraphDataScenarioA.{jobA,jobB,jobC,jobD,workflowArbGenerator}
+    "Updating of ALL jobs of their respective state in the created workflow would be respected" >> prop { (workflow: Workflow) ⇒
+      assert(workflow.create_timestamp isBefore java.time.Instant.now().plusNanos(3))
+      WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.start)
+      WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.active)
+      WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.finished)
+      WorkflowOps.updateWorkflow(workflow.id)(jobD.id)(JobStates.forced_termination)
+      workflow.jobgraph.countNodes must be_>(0)
+      workflow.jobgraph.bfs(jobA).head.state must be_==(JobStates.start)
+      workflow.jobgraph.bfs(jobB).head.state must be_==(JobStates.active)
+      workflow.jobgraph.bfs(jobC).head.state must be_==(JobStates.finished)
+      workflow.jobgraph.bfs(jobD).head.state must be_==(JobStates.forced_termination)
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioB.{jobA,jobB,jobC,jobD,jobE,jobF,workflowArbGenerator}
+    "Starting the workflow is equivalent to setting their states to 'start'" >> prop { (workflow: Workflow) ⇒
+      val startNodes = WorkflowOps.startWorkflow(workflow.id)
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must not be empty)
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must be_==(workflow.jobgraph.roots))
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioB.{jobA,jobB,jobC,jobD,jobE,jobF,workflowArbGenerator}
+    "Starting ANY workflow with an invalid workflow identifier is an error and a None value is returned" >> prop { (workflow: Workflow) ⇒
+      import quiver.{empty ⇒ emptyGraph}
+      val fakeWorkflow = Workflow( emptyGraph[Job, JobId, String] ) // workflow with an empty job-graph, this is not allowed
+      WorkflowOps.startWorkflow(fakeWorkflow.id) must beNone
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioB.{jobA,jobB,jobC,jobD,jobE,jobF,workflowArbGenerator}
+    "Stopping the workflow is equivalent to setting their states to 'forced_termination'" >> prop { (workflow: Workflow) ⇒
+      WorkflowOps.stopWorkflow(workflow.id) must beRight
+      workflow.jobgraph.nodes.map(n ⇒ n.state must be_==(JobStates.forced_termination))
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioB.{jobA,jobB,jobC,jobD,jobE,jobF,workflowArbGenerator}
+    "Stopping an workflow with an invalid workflow-id is an error and will be caught as a Either.Left value" >> prop { (workflow: Workflow) ⇒
+      WorkflowOps.stopWorkflow(java.util.UUID.randomUUID) must beLeft
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioB.{jobA,jobB,jobC,jobD,jobE,jobF,workflowArbGenerator}
+    "Attempting to stop a workflow with an invalid workflow identifier (i.e. not recognized by the systems) will give errors and returned as a Either.Left value" >> prop { (workflow: Workflow) ⇒
+      import quiver.{empty ⇒ emptyGraph}
+      val fakeWorkflow = Workflow( emptyGraph[Job, JobId, String] )
+      val fakeJob = Job("fake-job")
+      WorkflowOps.updateWorkflow(fakeWorkflow.id)(fakeJob.id)(JobStates.start) must throwA[Exception]
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioB.{jobA,jobB,jobC,jobD,jobE,jobF,workflowArbGenerator}
+    "Attempting to update a workflow with a job that is not associated with it will give errors can caught and returned as a Either.Left value" >> prop { (workflow: Workflow) ⇒
+      val fakeJob = Job("fake-job")
+      WorkflowOps.updateWorkflow(workflow.id)(fakeJob.id)(JobStates.start) must throwA[Exception]
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  // Tests for discovering the "next" nodes to trigger the workflow
+  //
+  {
+    import GraphDataScenarioC.{workflowArbGenerator}
+    "Attempting to discover the 'next' nodes to start with an invalid workflow identifier is an error" >> prop { (workflow: Workflow) ⇒
+      import quiver.{empty ⇒ emptyGraph}
+      val fakeWorkflow = Workflow(emptyGraph[Job, JobId, String])
+      val job = Job("fake-job")
+      WorkflowOps.discoverNextJobsToStart(fakeWorkflow.id)(job.id) must beLeft{
+        (errorString:String) ⇒ errorString must beEqualTo(s"Cannot discover workflow of the id: ${fakeWorkflow.id}")}
+    }
+  }
+
+  {
+    import GraphDataScenarioC.{workflowArbGenerator}
+    "Attempting to discover the 'next' nodes to start with an valid workflow identifier but invalid job identifier is an logical error, and a empty container is returned." >> prop { (workflow: Workflow) ⇒
+      import quiver.{empty ⇒ emptyGraph}
+      val job = Job("fake-job")
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(job.id) must beRight{
+        (jobNodes:Vector[Seq[Job]]) ⇒ jobNodes must be empty
+      }
+    }
+  }
+
+  {
+    import GraphDataScenarioC.{workflowArbGenerator}
+    "At the beginning where no workflows are started (though created), the next nodes would be equivalent to the 'root' of the jobgraph" >> prop { (workflow: Workflow) ⇒
+      val nodes = workflow.jobgraph.roots.map(root ⇒ WorkflowOps.discoverNextJobsToStart(workflow.id)(root.id))
+      nodes must not be empty
+    }
+  }
 }
