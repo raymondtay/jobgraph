@@ -7,7 +7,7 @@ _job graph_.
 Basic idea is to provide a mechanism that allows the user to define:
 - What a _step_ is
   - That usually means a format has to be defined
-_ How to describe a _workflow_ by stringing 1 or more _steps_ 
+- How to describe a _workflow_ by stringing 1 or more _steps_ 
 - The _job graph_ defines the node(s) where the system will wait. In other
   words, the system is designed to be asynchronous by default unless otherwise.
 - A few common operations to be provided 
