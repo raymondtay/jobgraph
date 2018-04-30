@@ -72,7 +72,7 @@ trait WorkflowOps extends WorkflowImplicits {
     * @param edges
     * @return multigraph
     */
-  def createWf(nodes: Seq[LNode[Job,UUID]]) = Reader {
+  def createWf(nodes: Seq[LNode[Job,UUID]]) : Reader[Seq[LEdge[Job,String]], Workflow] = Reader {
     (edges: Seq[LEdge[Job,String]]) ⇒
       val wf = Workflow(mkGraph(nodes, edges))
       work += wf
@@ -118,11 +118,10 @@ trait WorkflowOps extends WorkflowImplicits {
     * @return either a [[Either.Left]] value to indicate what went wrong or a
     * [[Either.Right]] to indicate a success (the payload carried is some number indicating number of job nodes updated or nothing)
     */
-  def stopWorkflow = Reader{ (wfId: WorkflowId) ⇒
+  def stopWorkflow : Reader[WorkflowId, Either[String, Option[Int]]] = Reader{ (wfId: WorkflowId) ⇒
     work.find(_.id equals wfId).fold[Either[String, Option[Int]]](Left(s"Cannot discover workflow of the id: $wfId")){ workflow ⇒
       val updatedNodes = workflow.jobgraph.labNodes.map(labeledNode ⇒ updateNodeState(JobStates.forced_termination)(labeledNode.vertex))
-      if (updatedNodes.isEmpty) none.asRight
-      else (updatedNodes.size).some.asRight
+      if (updatedNodes.isEmpty) { none.asRight } else { (updatedNodes.size).some.asRight }
     }
   }
 
@@ -135,14 +134,15 @@ trait WorkflowOps extends WorkflowImplicits {
     * not be located in the internal ADT or a [[Either.Right]] carrying the
     * payload which we are interested in.
     */
-  def discoverNextJobsToStart(wfId: WorkflowId) : Reader[JobId, Either[String, Vector[Seq[Job]]]] = Reader{ (jobId: JobId) ⇒
-    work.find(_.id equals wfId).fold[Either[String, Vector[Seq[Job]]]](Left(s"Cannot discover workflow of the id: $wfId")){
+  def discoverNextJobsToStart(wfId: WorkflowId) : Reader[JobId, Either[String, Vector[Job]]] = Reader{ (jobId: JobId) ⇒
+    work.find(_.id equals wfId).fold[Either[String, Vector[Job]]](Left(s"Cannot discover workflow of the id: $wfId")){
       workflow ⇒
         val ancestorsByGroup : Vector[Seq[Job]] =
-          workflow.jobgraph.labfilter(_ == jobId).nodes.
+          workflow.jobgraph.labfilter(_ equals jobId).nodes.
             map(n ⇒ workflow.jobgraph.successors(n)).
             flatten.map(x ⇒ workflow.jobgraph.rdfs(x::Nil))
-        ancestorsByGroup.map(group ⇒ group.filter(node ⇒ node.state == JobStates.inactive)).asRight
+
+        ancestorsByGroup.map(group ⇒ group.filter(node ⇒ node.state == JobStates.inactive)).flatten.asRight
     }
   }
 
@@ -153,7 +153,7 @@ trait WorkflowOps extends WorkflowImplicits {
     * @param node
     * @return the updated node
     */
-  def updateNodeState(state: JobStates.States) = Reader {(node: Job) ⇒
+  def updateNodeState(state: JobStates.States) : Reader[Job, Job] = Reader {(node: Job) ⇒
     node.state = state
     node
   }

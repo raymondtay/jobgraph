@@ -30,17 +30,20 @@ object ScatterGatherGraph extends App {
 
   val workflow = createWf(collection.immutable.Seq(node1, node2, node3, node4))(collection.immutable.Seq(e1, e2, e3, e4))
 
+  val waitTimeForCleanup = 4000
+  val waitTimeForAsyncProcessing = 8000
+
   val actorSystem = ActorSystem("EngineSystem")
   val engine = actorSystem.actorOf(Props(classOf[Engine]), "Engine")
 
   // start a job graph running
   engine ! StartWorkflow(workflow)
 
-  Thread.sleep(8000)
+  Thread.sleep(waitTimeForAsyncProcessing)
 
   engine ! StopWorkflow(workflow.id)
 
-  Thread.sleep(4000)
+  Thread.sleep(waitTimeForCleanup)
 
   // Stop the engine
   actorSystem.terminate()
@@ -71,17 +74,20 @@ object ConvergeGraph extends App {
 
   val workflow = createWf(collection.immutable.Seq(node1, node2, node3, node4))(collection.immutable.Seq(e1, e2, e3))
 
+  val waitTimeForCleanup = 4000
+  val waitTimeForAsyncProcessing = 8000
+
   val actorSystem = ActorSystem("EngineSystem")
   val engine = actorSystem.actorOf(Props(classOf[Engine]), "Engine")
 
   // start a job graph running
   engine ! StartWorkflow(workflow)
 
-  Thread.sleep(8000)
+  Thread.sleep(waitTimeForAsyncProcessing)
 
   engine ! StopWorkflow(workflow.id)
 
-  Thread.sleep(4000)
+  Thread.sleep(waitTimeForCleanup)
 
   // Stop the engine
   actorSystem.terminate()

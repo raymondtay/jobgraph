@@ -31,9 +31,9 @@ object GraphDataScenarioA {
     LEdge(jobC, jobD, "c -> d") ::
     LEdge(jobB, jobD, "b -> d") :: Nil
 
-  def graphGen = WorkflowOps.createWf(nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq])
+  def graphGen : Workflow = WorkflowOps.createWf(nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq])
 
-  def workflowGen = for {
+  def workflowGen : Gen[Workflow] = for {
     workflow ← oneOf(graphGen :: Nil)
   } yield {
     workflow
@@ -96,13 +96,13 @@ object GraphDataScenarioB {
     LEdge(jobA, jobE, "a -> e") ::
     LEdge(jobA, jobF, "a -> f") :: Nil
 
-  def graphGen = {
+  def graphGen : Workflow = {
     WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
     WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
     WorkflowOps.createWf(nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
   }
 
-  def workflowGen = for {
+  def workflowGen : Gen[Workflow] = for {
     workflow ← oneOf(graphGen :: Nil)
   } yield {
     workflow
@@ -166,19 +166,29 @@ object GraphDataScenarioC {
     LEdge(jobA, jobE, "a -> e") ::
     LEdge(jobA, jobF, "a -> f") :: Nil
 
-  def graphGen = {
+  def graphGen : Workflow = {
     WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
     WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
     WorkflowOps.createWf(nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
   }
 
-  def workflowGen = for {
+  def workflowGen : Gen[Workflow] = for {
     workflow ← oneOf(graphGen :: Nil)
   } yield {
     workflow
   }
 
+  // Purely for generation of the [a -> b, a -> c]
+  def graphGenUseCase1 : Workflow = WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
+
+  def workflowUseCase1Gen : Gen[Workflow] = for {
+    workflow ← oneOf(graphGenUseCase1 :: Nil)
+  } yield {
+    workflow
+  }
+
   implicit val workflowArbGenerator = Arbitrary(workflowGen)
+  implicit val workflowUseCase1ArbGenerator = Arbitrary(workflowUseCase1Gen)
 }
 
 
@@ -307,7 +317,7 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
       val job = Job("fake-job")
       WorkflowOps.discoverNextJobsToStart(fakeWorkflow.id)(job.id) must beLeft{
         (errorString:String) ⇒ errorString must beEqualTo(s"Cannot discover workflow of the id: ${fakeWorkflow.id}")}
-    }
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
 
   {
@@ -316,9 +326,9 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
       import quiver.{empty ⇒ emptyGraph}
       val job = Job("fake-job")
       WorkflowOps.discoverNextJobsToStart(workflow.id)(job.id) must beRight{
-        (jobNodes:Vector[Seq[Job]]) ⇒ jobNodes must be empty
+        (jobNodes:Vector[Job]) ⇒ jobNodes must be empty
       }
-    }
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
 
   {
@@ -326,6 +336,41 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
     "At the beginning where no workflows are started (though created), the next nodes would be equivalent to the 'root' of the jobgraph" >> prop { (workflow: Workflow) ⇒
       val nodes = workflow.jobgraph.roots.map(root ⇒ WorkflowOps.discoverNextJobsToStart(workflow.id)(root.id))
       nodes must not be empty
-    }
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
+
+  {
+    import GraphDataScenarioC.{jobA, jobB, jobC, jobD, workflowUseCase1ArbGenerator}
+    "SIMULATION: graph [a -> b, a -> c] " >> prop { (workflow: Workflow) ⇒
+      val startNodes = WorkflowOps.startWorkflow(workflow.id) // the workflow has "started"
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must not be empty)
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must be_==(workflow.jobgraph.roots))
+
+      // simulate the first node has completed, successfully.
+      WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.finished)
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobA.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(2)
+      }
+
+      // simulate the second node has completed, successfully.
+      WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.start)
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobB.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
+      }
+
+      // simulate the last node has completed, successfully.
+      WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.start)
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobC.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
+      }
+
+      // Reset it for the next subsequent test run
+      WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.inactive)
+
+      ok
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
 }

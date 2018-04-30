@@ -94,7 +94,7 @@ class Engine extends Actor with ActorLogging {
     */
   def whenFailure = Reader{(t: Throwable) ⇒
     logger.error("[whenFailure] Error encountered with details")
-    logger.debug(s"[whenFailure] Stack Trace: ${t.getStackTrace.map(println(_))}")
+    logger.debug(s"[whenFailure] Stack Trace: ${t.getStackTrace.map(stackElement ⇒ logger.error(stackElement.toString))}")
   }
 
   /**
@@ -149,6 +149,9 @@ object Engine extends App {
   // Load all the properties of the engine e.g. size of thread pool, timeouts
   // for the various parts of the engine while processing.
 
+  val waitTimeForCleanup = 4000
+  val waitTimeForAsyncProcessing = 8000
+
   val actorSystem = ActorSystem("EngineSystem")
   val engine = actorSystem.actorOf(Props(classOf[Engine]), "Engine")
 
@@ -158,11 +161,11 @@ object Engine extends App {
   // start a job graph running
   engine ! StartWorkflow(jobGraph)
 
-  Thread.sleep(8000)
+  Thread.sleep(waitTimeForAsyncProcessing)
 
   engine ! StopWorkflow(jobGraph.id)
 
-  Thread.sleep(4000)
+  Thread.sleep(waitTimeForCleanup)
 
   // Stop the engine
   actorSystem.terminate()
