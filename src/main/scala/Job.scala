@@ -142,9 +142,6 @@ trait WorkflowOps extends WorkflowImplicits {
           workflow.jobgraph.labfilter(_ == jobId).nodes.
             map(n ⇒ workflow.jobgraph.successors(n)).
             flatten.map(x ⇒ workflow.jobgraph.rdfs(x::Nil))
-            println(s"""Ancestors
-              ${ancestorsByGroup.foreach(x => println(s"! $x"))}
-              """)
         ancestorsByGroup.map(group ⇒ group.filter(node ⇒ node.state == JobStates.inactive)).asRight
     }
   }
