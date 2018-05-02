@@ -181,14 +181,24 @@ object GraphDataScenarioC {
   // Purely for generation of the [a -> b, a -> c]
   def graphGenUseCase1 : Workflow = WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
 
+  // Purely for generation of the [a -> b, a -> c, c -> d, b -> d]
+  def graphGenUseCase2 : Workflow = WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
+
   def workflowUseCase1Gen : Gen[Workflow] = for {
     workflow ← oneOf(graphGenUseCase1 :: Nil)
   } yield {
     workflow
   }
 
+  def workflowUseCase2Gen : Gen[Workflow] = for {
+    workflow ← oneOf(graphGenUseCase2 :: Nil)
+  } yield {
+    workflow
+  }
+
   implicit val workflowArbGenerator = Arbitrary(workflowGen)
   implicit val workflowUseCase1ArbGenerator = Arbitrary(workflowUseCase1Gen)
+  implicit val workflowUseCase2ArbGenerator = Arbitrary(workflowUseCase2Gen)
 }
 
 
@@ -340,7 +350,7 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
   }
 
   {
-    import GraphDataScenarioC.{jobA, jobB, jobC, jobD, workflowUseCase1ArbGenerator}
+    import GraphDataScenarioC.{jobA, jobB, jobC, workflowUseCase1ArbGenerator}
     "SIMULATION: graph [a -> b, a -> c] " >> prop { (workflow: Workflow) ⇒
       val startNodes = WorkflowOps.startWorkflow(workflow.id) // the workflow has "started"
       startNodes must beSome((nodes: Set[Job]) ⇒ nodes must not be empty)
@@ -349,17 +359,19 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
       // simulate the first node has completed, successfully.
       WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.finished)
       WorkflowOps.discoverNextJobsToStart(workflow.id)(jobA.id) must beRight {
-        (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(2)
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(2)
+          jobNodes must contain(be_==(jobB), be_==(jobC)) // Make further assertions about what node should be there
       }
 
       // simulate the second node has completed, successfully.
-      WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.start)
+      WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.finished)
       WorkflowOps.discoverNextJobsToStart(workflow.id)(jobB.id) must beRight {
         (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
       }
 
       // simulate the last node has completed, successfully.
-      WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.start)
+      WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.finished)
       WorkflowOps.discoverNextJobsToStart(workflow.id)(jobC.id) must beRight {
         (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
       }
@@ -368,6 +380,51 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
       WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.inactive)
       WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.inactive)
       WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.inactive)
+
+      ok
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioC.{jobA, jobB, jobC, jobD, workflowUseCase2ArbGenerator}
+    "SIMULATION: graph [a -> b, a -> c, c -> d, b -> d] " >> prop { (workflow: Workflow) ⇒
+      val startNodes = WorkflowOps.startWorkflow(workflow.id) // the workflow has "started" i.e. Job-A ∈ START
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must not be empty)
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must be_==(workflow.jobgraph.roots))
+
+      // simulate the first node has completed, successfully. i.e. Job-A ∈ FINISHED
+      WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.finished)
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobA.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒ 
+          jobNodes.size must be_==(2)
+          jobNodes must contain(be_==(jobB), be_==(jobC)) // Make further assertions about what node should be there
+      }
+
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobD.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
+      }
+
+      // simulate the second node has completed, successfully.
+      WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.finished)
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobB.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(2)
+          jobNodes must contain(be_==(jobC), be_==(jobD)) // Make further assertions about what node should be there
+      }
+
+      // simulate the last node has completed, successfully.
+      WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.finished)
+      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobC.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(1)
+          jobNodes must contain(be_==(jobD)) // Make further assertions about what node should be there
+      }
+
+      // Reset it for the next subsequent test run
+      WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(jobD.id)(JobStates.inactive)
 
       ok
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)

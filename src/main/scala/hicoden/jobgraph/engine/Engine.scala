@@ -34,7 +34,7 @@ case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStat
 // (c) Update its internal structure and decides whether to push the execution to the next step(s) because there will be wait-times at certain control
 //     points - as decided by the digraph (take note that it can be a multi-graph)
 //
-class Engine extends Actor with ActorLogging {
+class Engine extends Actor with ActorLogging with EngineStateOps {
   import cats._, data._, implicits._
   import WorkflowOps._
 
@@ -42,7 +42,7 @@ class Engine extends Actor with ActorLogging {
   // (a) ADTs should be accessible from any node in the cluster
   //
   private[this] var activeWorkflows = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
-  private[this] var workflowsReceived = collection.mutable.Map.empty[WorkflowId, Workflow]
+  private[this] var inactiveWorkflows = collection.mutable.Map.empty[WorkflowId, Workflow]
 
   def receive : PartialFunction[Any, Unit] = {
 
@@ -53,7 +53,7 @@ class Engine extends Actor with ActorLogging {
         logger.error("[Engine] System error detected as there are no start nodes, check it!")
       } else {
         activateWorkers(jobGraph.id)(workers)
-        activeWorkflows += jobGraph.id → workers.map(_._1)
+        activeWorkflows = addToActive(jobGraph.id)(workers.map(_._1)).runS(activeWorkflows).value
         logger.info("[Engine] Started a job graph")
       }
 
@@ -66,9 +66,9 @@ class Engine extends Actor with ActorLogging {
     case StopWorkflow(wfId) ⇒
       if (activeWorkflows.contains(wfId)) {
         stopWorkflow(wfId) // state should be updated to 'forced_termination'
-        deactivateWorkers(wfId)(activeWorkflows.toMap).bimap(
+        deactivateWorkers(wfId)(activeWorkflows).bimap(
           whenFailure.run,
-          returnedMap ⇒ activeWorkflows = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]] ++ returnedMap
+          returnedMap ⇒ activeWorkflows = returnedMap
         )
         sender ! s"Workflow $wfId stopped"
       } else sender ! s"Workflow $wfId does not exist"
@@ -116,12 +116,12 @@ class Engine extends Actor with ActorLogging {
     * @param xs - state data
     * @return a Left which indicates a error condition or a Right which indicates success.
     */
-  def deactivateWorkers(wfId: WorkflowId) = Reader { (workflows: Map[WorkflowId, Set[ActorRef]]) ⇒
+  def deactivateWorkers(wfId: WorkflowId) = Reader { (workflows: WFA) ⇒
     Either.cond(
       workflows.contains(wfId),
       {
         workflows(wfId).map(actor ⇒ actor ! StopRun)
-        workflows - wfId
+        removeFromActive(wfId).runS(collection.mutable.Map(workflows.toSeq: _*)).value
       },
       throw new Exception(s"[DeactivateWorkers] Did not discover workflow $wfId in the internal state.")
     )
