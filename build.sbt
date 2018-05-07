@@ -23,7 +23,7 @@ lazy val jobgraph = (project in file("."))
   ).enablePlugins(PackPlugin)
 
 // Excluded the "examples" from the coverage
-coverageExcludedPackages := "hicoden\\.jobgraph\\.ConvergeGraph;hicoden\\.jobgraph\\.ScatterGatherGraph;hicoden\\.jobgraph\\.examples\\.*"
+coverageExcludedPackages := "hicoden\\.jobgraph\\.CLRSBumsteadGraph;hicoden\\.jobgraph\\.ConvergeGraph;hicoden\\.jobgraph\\.ScatterGatherGraph;hicoden\\.jobgraph\\.examples\\.*"
 
 // Need for the kind project so that i dont have to use type-lambdas
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4")
