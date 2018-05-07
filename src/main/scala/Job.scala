@@ -147,6 +147,31 @@ trait WorkflowOps extends WorkflowImplicits {
   }
 
   /**
+    * When the given workflow (i.e. [[wfId]]) is active, this procedure discover the next batch of
+    * work with the requirement that for each successor of the given job-id
+    * (i.e. [[jobId]]) to be part of the next batch, than all predecessors must be in
+    * the state FINISHED state. That is to say, if the previous work is not
+    * completed normally or has not even started, that this node is omitted.
+    * @param wfId workflow id
+    * @param jobId job id
+    * @return An empty container or some container that contains the next batch
+    */
+  def discoverNext(wfId: WorkflowId) : Reader[JobId, Either[String, Vector[Job]]] = Reader{ (jobId: JobId) ⇒
+    work.find(_.id equals wfId).fold[Either[String, Vector[Job]]](Left(s"Cannot discover workflow of the id: $wfId")){
+      workflow ⇒
+        val succToPreds : Vector[Vector[(Job, Vector[Job])]] =
+          workflow.jobgraph.labfilter(_ equals jobId).
+            nodes.
+            map(n ⇒ workflow.jobgraph.successors(n).map(x ⇒ (x, workflow.jobgraph.predecessors(x))))
+
+        val result : Vector[(Job, Vector[Job])] =
+          succToPreds.map(xs ⇒ xs.filter(pair ⇒ pair._2.forall(_.state == JobStates.finished))).flatten
+
+        result.foldLeft(Vector.empty[Job])((acc, e) ⇒ acc :+ e._1).asRight
+    }
+  }
+
+  /**
     * Updates the state of the step/job; note that the state is overriden with
     * the incoming state value; no check is done.
     * @param state

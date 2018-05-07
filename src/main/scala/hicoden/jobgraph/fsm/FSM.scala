@@ -34,7 +34,9 @@ import scala.language.postfixOps
 // there till it receives a signal that would send it to termination.
 //
 // Be aware that a forced-termination can be propagated to the job which would
-// terminate the existing work.
+// terminate the existing work gracefully; what is meant by gracefully here is
+// that we shall send a signal to Apache Beam et al (Apache Beam shall take
+// care of terminating the job based on its semantics).
 
 // Events
 case class StartRun(wfId: WorkflowId, job : Job, engine: ActorRef)
@@ -78,6 +80,8 @@ class JobFSM extends LoggingFSM[State, Data] {
       log.info("entering 'Active' from 'Idle'")
     case Active -> Idle ⇒
       log.info("entering 'Idle' from 'Active'")
+    case Active -> Active ⇒
+      log.info("You called Sire?")
   }
 
   // TODO:
@@ -89,10 +93,16 @@ class JobFSM extends LoggingFSM[State, Data] {
       log.info("Stopping run")
       stop(FSM.Shutdown)
 
+    // Using the [[StateTimeout]], we can create a mechanism that is akin to
+    // polling; a further use case is to create logging mechanisms
     case Event(StateTimeout, Processing(wfId, job, engineRef)) ⇒
-      log.info("Timed out after 3 seconds, going back to Idle")
-      engineRef ! UpdateWorkflow(wfId, job.id, JobStates.forced_termination)
-      goto(Idle) using Processing(wfId, job, engineRef)
+      log.info("Finished processing, shutting down.")
+      engineRef ! UpdateWorkflow(wfId, job.id, JobStates.finished)
+      stop(FSM.Shutdown)
+      //log.info("Timed out after 3 seconds, going back to Idle")
+      //engineRef ! UpdateWorkflow(wfId, job.id, JobStates.forced_termination)
+      //goto(Active) using Processing(wfId, job, engineRef)
+
   }
 
   initialize()
