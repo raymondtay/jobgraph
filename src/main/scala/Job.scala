@@ -159,10 +159,13 @@ trait WorkflowOps extends WorkflowImplicits {
   def discoverNext(wfId: WorkflowId) : Reader[JobId, Either[String, Vector[Job]]] = Reader{ (jobId: JobId) ⇒
     work.find(_.id equals wfId).fold[Either[String, Vector[Job]]](Left(s"Cannot discover workflow of the id: $wfId")){
       workflow ⇒
-        val succToPreds : Vector[Vector[(Job, Vector[Job])]] =
-          workflow.jobgraph.labfilter(_ equals jobId).
-            nodes.
+        val succToPreds : Vector[Vector[(Job, Vector[Job])]] = {
+          val subGraph = workflow.jobgraph.labfilter(_ equals jobId)
+          if(!subGraph.hasLoop) {
+            subGraph.nodes.
             map(n ⇒ workflow.jobgraph.successors(n).map(x ⇒ (x, workflow.jobgraph.predecessors(x))))
+          } else Vector.empty[Vector[(Job,Vector[Job])]]
+        }
 
         val result : Vector[(Job, Vector[Job])] =
           succToPreds.map(xs ⇒ xs.filter(pair ⇒ pair._2.forall(_.state == JobStates.finished))).flatten
