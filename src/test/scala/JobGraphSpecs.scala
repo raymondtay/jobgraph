@@ -201,6 +201,56 @@ object GraphDataScenarioC {
   implicit val workflowUseCase2ArbGenerator = Arbitrary(workflowUseCase2Gen)
 }
 
+// This graph is from the CLRS Algorithm textbook page 613 where Professor
+// Bumstead needs to figure how what he needs to do (in sequence) so that he
+// can get his day started; run the [[Engine]]
+object GraphDataScenarioD {
+  
+  import quiver._
+
+  val shirtJob = Job("shirt")
+  val tieJob = Job("tie")
+  val jacketJob = Job("jacket")
+  val beltJob = Job("belt")
+  val pantsJob = Job("pants")
+  val undershortsJob = Job("undershorts")
+  val socksJob = Job("socks")
+  val shoesJob = Job("shoes")
+  val watchJob = Job("watch")
+
+  val shirt  = LNode(shirtJob, shirtJob.id)
+  val tie    = LNode(tieJob, tieJob.id)
+  val jacket = LNode(jacketJob, jacketJob.id)
+  val belt   = LNode(beltJob, beltJob.id)
+  val pants  = LNode(pantsJob, pantsJob.id)
+  val undershorts = LNode(undershortsJob, undershortsJob.id)
+  val socks = LNode(socksJob, socksJob.id)
+  val shoes = LNode(shoesJob, shoesJob.id)
+  val watch = LNode(watchJob, watchJob.id)
+  
+  val e1  = LEdge(shirtJob,tieJob,"shirt->tie")
+  val e2  = LEdge(shirtJob,beltJob, "shirt->belt")
+  val e3  = LEdge(tieJob,jacketJob,"tie->jacket")
+  val e4  = LEdge(beltJob,jacketJob,"belt->jacket")
+  val e5  = LEdge(pantsJob,beltJob,"pants->belt")
+  val e6  = LEdge(undershortsJob,pantsJob,"undershorts->pants")
+  val e7  = LEdge(undershortsJob,shoesJob,"undershorts->shoes")
+  val e8  = LEdge(pantsJob,shoesJob,"pants->shoes")
+  val e9  = LEdge(socksJob,shoesJob,"socks->shoes")
+  val e10 = LEdge(watchJob,watchJob,"watch->watch")
+  
+  import WorkflowOps._
+
+  def graphGen : Workflow = createWf(Seq(shirt, tie, jacket, belt, pants, undershorts, socks, shoes, watch))(Seq(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10))
+
+  def workflowGen : Gen[Workflow] = for {
+    workflow ← oneOf(graphGen :: Nil)
+  } yield {
+    workflow
+  }
+
+  implicit val workflowArbGenerator = Arbitrary(workflowGen)
+}
 
 /**
  * Specifications for the workflows and the category of tests conducted here
@@ -358,7 +408,7 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
 
       // simulate the first node has completed, successfully.
       WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.finished)
-      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobA.id) must beRight {
+      WorkflowOps.discoverNext(workflow.id)(jobA.id) must beRight {
         (jobNodes: Vector[Job]) ⇒
           jobNodes.size must be_==(2)
           jobNodes must contain(be_==(jobB), be_==(jobC)) // Make further assertions about what node should be there
@@ -366,13 +416,13 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
 
       // simulate the second node has completed, successfully.
       WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.finished)
-      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobB.id) must beRight {
+      WorkflowOps.discoverNext(workflow.id)(jobB.id) must beRight {
         (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
       }
 
       // simulate the last node has completed, successfully.
       WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.finished)
-      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobC.id) must beRight {
+      WorkflowOps.discoverNext(workflow.id)(jobC.id) must beRight {
         (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
       }
 
@@ -394,37 +444,100 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
 
       // simulate the first node has completed, successfully. i.e. Job-A ∈ FINISHED
       WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.finished)
-      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobA.id) must beRight {
-        (jobNodes: Vector[Job]) ⇒ 
+      WorkflowOps.discoverNext(workflow.id)(jobA.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
           jobNodes.size must be_==(2)
           jobNodes must contain(be_==(jobB), be_==(jobC)) // Make further assertions about what node should be there
       }
 
-      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobD.id) must beRight {
+      WorkflowOps.discoverNext(workflow.id)(jobD.id) must beRight {
         (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
       }
 
       // simulate the second node has completed, successfully.
       WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.finished)
-      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobB.id) must beRight {
+      WorkflowOps.discoverNext(workflow.id)(jobB.id) must beRight {
         (jobNodes: Vector[Job]) ⇒
-          jobNodes.size must be_==(2)
-          jobNodes must contain(be_==(jobC), be_==(jobD)) // Make further assertions about what node should be there
+          jobNodes.size must be_==(0)
       }
-
+ 
       // simulate the last node has completed, successfully.
       WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.finished)
-      WorkflowOps.discoverNextJobsToStart(workflow.id)(jobC.id) must beRight {
+      WorkflowOps.discoverNext(workflow.id)(jobC.id) must beRight {
         (jobNodes: Vector[Job]) ⇒
           jobNodes.size must be_==(1)
           jobNodes must contain(be_==(jobD)) // Make further assertions about what node should be there
       }
-
+ 
       // Reset it for the next subsequent test run
       WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.inactive)
       WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.inactive)
       WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.inactive)
       WorkflowOps.updateWorkflow(workflow.id)(jobD.id)(JobStates.inactive)
+
+      ok
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import GraphDataScenarioD._
+    s"""
+    SIMULATION: graph ${graphGen.jobgraph}
+    """ >> prop { (workflow: Workflow) ⇒
+      val startNodes = WorkflowOps.startWorkflow(workflow.id) // the workflow has "started" i.e. Job-A ∈ START
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must not be empty)
+      startNodes must beSome((nodes: Set[Job]) ⇒ nodes must be_==(workflow.jobgraph.roots))
+
+      // simulate that all start nodes have completed successfully
+      WorkflowOps.updateWorkflow(workflow.id)(socksJob.id)(JobStates.finished)
+      WorkflowOps.updateWorkflow(workflow.id)(watchJob.id)(JobStates.finished)
+      WorkflowOps.updateWorkflow(workflow.id)(undershortsJob.id)(JobStates.finished)
+      WorkflowOps.updateWorkflow(workflow.id)(shirtJob.id)(JobStates.finished)
+
+      WorkflowOps.discoverNext(workflow.id)(socksJob.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(0)
+      }
+
+      WorkflowOps.discoverNext(workflow.id)(undershortsJob.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(1)
+          jobNodes must contain(be_==(pantsJob))
+      }
+
+      WorkflowOps.discoverNext(workflow.id)(shirtJob.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(1)
+          jobNodes must contain(be_==(tieJob))
+      }
+
+      WorkflowOps.updateWorkflow(workflow.id)(tieJob.id)(JobStates.finished)
+      WorkflowOps.updateWorkflow(workflow.id)(pantsJob.id)(JobStates.finished)
+
+      WorkflowOps.discoverNext(workflow.id)(pantsJob.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(2)
+          jobNodes must contain(be_==(shoesJob), be_==(beltJob))
+      }
+
+      WorkflowOps.updateWorkflow(workflow.id)(shoesJob.id)(JobStates.finished)
+
+      WorkflowOps.discoverNext(workflow.id)(shoesJob.id) must beRight {
+        (jobNodes: Vector[Job]) ⇒
+          jobNodes.size must be_==(0)
+      }
+
+      // Reset it for the next subsequent test run
+      WorkflowOps.updateWorkflow(workflow.id)(shirtJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(tieJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(jacketJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(beltJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(socksJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(shoesJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(watchJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(pantsJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(beltJob.id)(JobStates.inactive)
+      WorkflowOps.updateWorkflow(workflow.id)(undershortsJob.id)(JobStates.inactive)
 
       ok
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
