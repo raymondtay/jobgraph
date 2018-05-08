@@ -2,7 +2,7 @@ package hicoden.jobgraph.engine
 
 import hicoden.jobgraph.{WorkflowId, Workflow}
 
-import akka.actor.ActorRef
+import akka.actor._
 import org.specs2._
 import org.scalacheck._
 import com.typesafe.config._
@@ -20,7 +20,12 @@ object EngineStateOpsData {
 
   def genEmptyWFA : Gen[WFA] = oneOf(emptyActiveWF :: Nil)
 
+  def emptyLookup : scala.collection.mutable.Map[ActorPath, WorkflowId] = scala.collection.mutable.Map.empty[ActorPath, WorkflowId]
+
+  def genEmptyLookup : Gen[Map[ActorPath, WorkflowId]] = oneOf(emptyLookup :: Nil)
+
   implicit def arbEmptyWfStorageGenerator = Arbitrary(genEmptyWFA)
+  implicit def arbEmptyLookupGenerator    = Arbitrary(genEmptyLookup)
 }
 
 
@@ -199,5 +204,6 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
 
     }
   }
- 
+
 }
+

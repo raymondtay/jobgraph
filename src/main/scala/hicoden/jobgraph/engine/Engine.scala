@@ -43,8 +43,9 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
   // TODO:
   // (a) ADTs should be accessible from any node in the cluster
   //
-  private[this] var activeWorkflows = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
-  private[this] var failedWorkflows = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
+  private[this] var activeWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
+  private[this] var workersToWfLookup = collection.mutable.Map.empty[ActorPath, WorkflowId]
+  private[this] var failedWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
 
   def receive : PartialFunction[Any, Unit] = {
 
@@ -58,7 +59,8 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
           """, jobGraph.id, jobGraph)
       } else {
         activateWorkers(jobGraph.id)(workers)
-        activeWorkflows = addToActive(jobGraph.id)(workers.map(_._1)).runS(activeWorkflows).value
+        workersToWfLookup = addToLookup(jobGraph.id)(workers.collect{ case (ref,_) ⇒ ref }).runS(workersToWfLookup).value
+        activeWorkflows   = addToActive(jobGraph.id)(workers.map(_._1)).runS(activeWorkflows).value
         logger.info("[Engine] Started a job graph")
       }
 
@@ -73,12 +75,11 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
       updateWorkflow(wfId)(jobId)(signal).bimap(
         (error: Throwable) ⇒ {
           logFailure.run(error) >>
-          dropWorkflowFromActive(collection.immutable.Map(activeWorkflows.toList:_*),
-                                 collection.immutable.Map(failedWorkflows.toList:_*))(wfId).bimap(
+          dropWorkflowFromActive(activeWorkflows, failedWorkflows)(wfId).bimap(
             (errorMessage: String) ⇒ logger.error(s"[Engine][UpdateWorkflow] Error in updating workflow with message: $errorMessage ."),
             (pair: (Map[WorkflowId, Set[ActorRef]], Map[WorkflowId, Set[ActorRef]])) ⇒ {
-              activeWorkflows = collection.mutable.Map(pair._1.toList:_*)
-              failedWorkflows = collection.mutable.Map(pair._2.toList:_*)
+              activeWorkflows = pair._1
+              failedWorkflows = pair._2
             }
           )
         },
@@ -88,13 +89,13 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
           } yield {
             if(!jobs.isEmpty) {
               logger.info(s"[Engine][UpdateWorkflow] Going to instantiate workers for this batch : $jobs.")
-              startJobs(wfId)(collection.immutable.Map(activeWorkflows.toList:_*))(jobs) match {
-                case Left(a) ⇒
+              startJobs(wfId)(activeWorkflows, workersToWfLookup)(jobs) match {
+                case Left((a, b)) ⇒
                   logger.error(s"[Engine][UpdateWorkflow] Error in starting new workers for jobs : $jobs.")
-                  activeWorkflows = collection.mutable.Map(a.toList: _*)
-                case Right(b) ⇒
+                  activeWorkflows = a; workersToWfLookup = b
+                case Right((a, b)) ⇒
                   logger.info(s"[Engine][UpdateWorkflow] Successfully started new workers for jobs : $jobs.")
-                  activeWorkflows = collection.mutable.Map(b.toList: _*)
+                  activeWorkflows = a; workersToWfLookup = b
               }
             } else logger.info(s"[Engine][UpdateWorkflow] Nothing to do for wf: $wfId")
           }
@@ -117,9 +118,11 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
         logger.error("[Engine][StopWorkflow] Attempting to stop a workflow id:{} that does not exist!", wfId)
       )
 
-    // TODO: Handle the termination of the child actor
     case Terminated(child) ⇒
-      logger.debug("[Engine][Internal] The job {} has terminated.", child)
+      val (xs, result) = removeFromLookup(child).run(workersToWfLookup).value
+      workersToWfLookup = xs
+      val workflowId : WorkflowId = result._1
+      logger.debug("[Engine][Internal] The job: {} has terminated for workflow: {}.", child, workflowId)
   }
 
   /**
@@ -131,15 +134,16 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
     * @param jobs the set of jobs we shall be creating workers for
     * @return the update active storage
     */
-  def startJobs(wfId: WorkflowId)(active: Map[WorkflowId, Set[ActorRef]]) : Reader[Vector[Job], Either[Map[WorkflowId, Set[ActorRef]],Map[WorkflowId, Set[ActorRef]]]] = Reader{ (jobs: Vector[Job]) ⇒
+  def startJobs(wfId: WorkflowId)(active: Map[WorkflowId, Set[ActorRef]], lookup: Map[ActorPath, WorkflowId]) : Reader[Vector[Job], Either[(Map[WorkflowId, Set[ActorRef]], Map[ActorPath, WorkflowId]), (Map[WorkflowId, Set[ActorRef]], Map[ActorPath, WorkflowId])]] = Reader{ (jobs: Vector[Job]) ⇒
     val startedNodes : Either[Throwable, Vector[Option[Boolean]]] = jobs.map(job ⇒ updateWorkflow(wfId)(job.id)(JobStates.start)).sequence
     startedNodes.bimap(
-      (err: Throwable ) ⇒ active,
+      (err: Throwable ) ⇒ (active, lookup),
       (ys: Vector[Option[Boolean]]) ⇒ {
         val workers = createWorkers(Set(jobs:_*))
         activateWorkers(wfId)(workers)
-        collection.immutable.Map(
-          addToActive(wfId)(workers.map(_._1)).runS(collection.mutable.Map(active.toList:_*)).value.toList :_*
+        (
+          addToActive(wfId)(workers.map(_._1)).runS(active).value,
+          addToLookup(wfId)(workers.map(_._1)).runS(lookup).value
         )
       }
     )
@@ -194,7 +198,7 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
       workflows.contains(wfId),
       {
         workflows(wfId).map(actor ⇒ actor ! StopRun)
-        removeFromActive(wfId).runS(collection.mutable.Map(workflows.toSeq: _*)).value
+        removeFromActive(wfId).runS(workflows).value
       },
       s"[DeactivateWorkers] Did not discover workflow $wfId in the internal state."
     )
