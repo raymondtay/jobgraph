@@ -13,6 +13,7 @@ object Dependencies {
   val typesafeCfgVersion = "1.3.2"  // Scala library for configuraiton
   val logbackClassicVersion = "1.2.3" // logging library
   val scalaLoggingVersion   = "3.9.0" // logging library
+  val pureConfigVersion     = "0.9.1" // Scala library for removing boilerplate from reading configuration files
 
   val loggingLibs = Seq(
     "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
@@ -28,6 +29,7 @@ object Dependencies {
   val specs2ScalaCheckTest = "org.specs2" %% "specs2-scalacheck" % specs2Version
   val actorLib             = "com.typesafe.akka" %% "akka-actor" % akkaVersion
   val actorTest            = "com.typesafe.akka" %% "akka-testkit" % akkaVersion
+  val pureConfig           = "com.github.pureconfig" %% "pureconfig" % pureConfigVersion
 
   val scioLibs = Seq(
     "com.spotify" %% "scio-core" % scioVersion,
@@ -38,6 +40,6 @@ object Dependencies {
 
   val scioTestLib = "com.spotify" %% "scio-test" % scioVersion
 
-  val generalLibs = actorLib :: catsLib :: quiverLib :: typesafeConfigLib :: Nil ++ loggingLibs ++ scioLibs
+  val generalLibs = actorLib :: catsLib :: quiverLib :: typesafeConfigLib :: pureConfig :: Nil ++ loggingLibs ++ scioLibs
   val testLibs = Seq(specs2Test , specs2ScalaCheckTest, actorTest, scioTestLib, scalatestLib).map(_ % Test)
 }
