@@ -67,12 +67,12 @@ trait Concretizer {
   // Attempts to parse the tree/backward edges it notices and returns either a
   // [[Parsed.Success]] where the payload carries the graph/subgraph representation
   // or [[Parsed.Failure]] which pretty much says that there is a parsing error.
-  private
   def parseVertices : Reader[String, fastparse.core.Parsed[Forward,Char,String]] =
     Reader { (graph: String) ⇒
       import fastparse.all._
-      val treeEdge = P(" ".? ~ AnyChars(1).! ~ " ".? ~ "->" ~ " ".? ~ AnyChars(1).! ~ End).map(p ⇒ Forward(p._1, p._2))
-      val backEdge = P(" ".? ~ AnyChars(1).! ~ " ".? ~ "<-" ~ " ".? ~ AnyChars(1).! ~ End).map(p ⇒ Forward(p._2, p._1))
+      val number   = P( CharIn('0' to '9').rep(min=1,max=10) )
+      val treeEdge = P(" ".? ~ number.! ~ " ".? ~ "->" ~ " ".? ~ number.! ~ End).map(p ⇒ Forward(p._1, p._2))
+      val backEdge = P(" ".? ~ number.! ~ " ".? ~ "<-" ~ " ".? ~ number.! ~ End).map(p ⇒ Forward(p._2, p._1))
       val edgeParser = P(treeEdge | backEdge)
       edgeParser.parse(graph)
     }
@@ -85,10 +85,15 @@ trait Concretizer {
       def contains : Either[String, Int] ⇒  Either[String, Option[Int]] = (e : Either[String, Int]) ⇒
         e.map(item ⇒ Right(if (jobDescriptorTable.contains(item)) Some(item) else None)).getOrElse(Left(s"$e not present in job descriptor table."))
       def convert : Either[String, Option[Int]] ⇒ Either[String, Int] = (e: Either[String, Option[Int]]) ⇒
-        e.map(someJobIndex ⇒ Right(someJobIndex.get)).getOrElse(Left(s"$e not present in job descriptor table."))
+        e.map(someJobIndex ⇒ someJobIndex.fold(Right(-1))(Right(_))).getOrElse(Left(s"$e not present in job descriptor table."))
 
       edges.foreach(e ⇒ { vertices += e.src; vertices += e.dest })
-      Yoneda(vertices.toList).map(parse).map(contains).map(convert).run.sequence
+      val result = Yoneda(vertices.toList).map(parse).map(contains).map(convert).run.sequence
+      result match {
+        case Right(data) if (data.find(_ == -1).size == 0) ⇒ result
+        case Right(data) if (data.find(_ == -1).size != 0) ⇒ Left(s"At least 1 job whose configuration cannot be discovered.")
+        case Left(_) ⇒ result
+      }
     }
 
   // Converts the relationship into [[quiver]]'s graph implementation of the
