@@ -14,6 +14,7 @@ object Dependencies {
   val logbackClassicVersion = "1.2.3" // logging library
   val scalaLoggingVersion   = "3.9.0" // logging library
   val pureConfigVersion     = "0.9.1" // Scala library for removing boilerplate from reading configuration files
+  val fastparseVersion      = "1.0.0" // Scala library for parsing ASTs, DSLs etc
 
   val loggingLibs = Seq(
     "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
@@ -30,6 +31,7 @@ object Dependencies {
   val actorLib             = "com.typesafe.akka" %% "akka-actor" % akkaVersion
   val actorTest            = "com.typesafe.akka" %% "akka-testkit" % akkaVersion
   val pureConfig           = "com.github.pureconfig" %% "pureconfig" % pureConfigVersion
+  val fastparse            = "com.lihaoyi" %% "fastparse" % fastparseVersion
 
   val scioLibs = Seq(
     "com.spotify" %% "scio-core" % scioVersion,
@@ -40,6 +42,6 @@ object Dependencies {
 
   val scioTestLib = "com.spotify" %% "scio-test" % scioVersion
 
-  val generalLibs = actorLib :: catsLib :: quiverLib :: typesafeConfigLib :: pureConfig :: Nil ++ loggingLibs ++ scioLibs
+  val generalLibs = actorLib :: catsLib :: quiverLib :: typesafeConfigLib :: pureConfig :: fastparse :: Nil ++ loggingLibs ++ scioLibs
   val testLibs = Seq(specs2Test , specs2ScalaCheckTest, actorTest, scioTestLib, scalatestLib).map(_ % Test)
 }
