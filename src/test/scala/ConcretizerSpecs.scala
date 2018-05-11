@@ -154,4 +154,112 @@ class ConcretizerSpecs extends mutable.Specification with
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
 
+  {
+    import StepLoaderData.arbValidNamespaces
+    "Parsing DSL. When the subgraphs in any workflow configuration is validated to be correct, then the next thing is to reify the edges and nodes." >> prop { (ns: String) ⇒
+      object s extends SParser with SLoader
+      object t extends Parser with Loader
+      import quiver.{LNode, LEdge}
+
+      val loadedJobConfigs = s.loadDefault("jobs" :: "jobs2" :: "jobs3" :: Nil) /* loads the configuration from the [[application.conf]] */
+      loadedJobConfigs.toEither must beRight((cfgs: List[JobConfig]) ⇒ cfgs.size must be_==(4))
+      loadedJobConfigs.toList must not be empty
+      var jdt : JobDescriptorTable = scala.collection.immutable.HashMap.empty[Int, JobConfig]
+      jdt = s.hydrateJobConfigs(loadedJobConfigs.toList.flatten).runS(jdt).value
+      jdt.contains(loadedJobConfigs.toList.flatten.head.id) must beTrue
+
+      val loadedWfConfigs = t.loadDefault("workflows" :: Nil) /* this loads the configuration from [[application.conf]] */
+      loadedWfConfigs.toEither must beRight((cfgs: List[WorkflowConfig]) ⇒ cfgs.size must beBetween(1,2))
+      loadedWfConfigs.toList must not be empty
+      var wfdt : WorkflowDescriptorTable = scala.collection.immutable.HashMap.empty[Int, WorkflowConfig]
+      wfdt = t.hydrateWorkflowConfigs(loadedWfConfigs.toList.flatten).runS(wfdt).value
+      wfdt.contains(loadedWfConfigs.toList.flatten.head.id) must beTrue
+
+
+      // Note: The test is expecting to have exactly 4 subgraphs of the form
+      // "src -> dest"
+      loadedWfConfigs.toList.flatten.map(wfConfig ⇒ collectVertices(wfConfig)
+        must beRight( (fs: List[Forward]) ⇒ verifyVerticesWith(jdt)(fs)
+          must beRight( (indices: List[Int]) ⇒ reifyRelationships(indices)(jdt)(fs)._1.size must be_==(4)) ) )
+
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import StepLoaderData.arbValidNamespaces
+    "Parsing DSL. When 2 (well-formed) subgraphs are submitted for parsing, validation and presenting of MultiGraph nodes and edges, it should be successful." >> prop { (ns: String) ⇒
+      object s extends SParser with SLoader
+      object t extends Parser with Loader
+      import quiver.{LNode, LEdge}
+
+      val loadedJobConfigs = s.loadDefault("jobs" :: "jobs2" :: "jobs3" :: Nil) /* loads the configuration from the [[application.conf]] */
+      loadedJobConfigs.toEither must beRight((cfgs: List[JobConfig]) ⇒ cfgs.size must be_==(4))
+      loadedJobConfigs.toList must not be empty
+      var jdt : JobDescriptorTable = scala.collection.immutable.HashMap.empty[Int, JobConfig]
+      jdt = s.hydrateJobConfigs(loadedJobConfigs.toList.flatten).runS(jdt).value
+      jdt.contains(loadedJobConfigs.toList.flatten.head.id) must beTrue
+
+      val loadedWfConfigs = t.loadDefault("workflows" :: "workflows2" :: Nil) /* this loads the configuration from [[application.conf]] */
+      loadedWfConfigs.toEither must beRight((cfgs: List[WorkflowConfig]) ⇒ cfgs.size must beBetween(1,2))
+      loadedWfConfigs.toList must not be empty
+      var wfdt : WorkflowDescriptorTable = scala.collection.immutable.HashMap.empty[Int, WorkflowConfig]
+      wfdt = t.hydrateWorkflowConfigs(loadedWfConfigs.toList.flatten).runS(wfdt).value
+      wfdt.contains(loadedWfConfigs.toList.flatten.head.id) must beTrue
+
+
+      // Note: The test is expecting to have exactly 4 subgraphs of the form
+      // "src -> dest"
+      loadedWfConfigs.toList.flatten.map(wfConfig ⇒ reify(jdt)(wfConfig)
+        must beRight( (nodesNEdges: (List[LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒  {
+              nodesNEdges._1.size must be_==(4)
+              nodesNEdges._2.size must be_==(4)
+              }
+              ))
+
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import StepLoaderData.arbValidNamespaces
+    "Parsing DSL. When 3 (well-formed) subgraphs are submitted but 1 workflow is searching for steps not in the system, then this will be caught as a failure but the rest will succeed." >> prop { (ns: String) ⇒
+      object s extends SParser with SLoader
+      object t extends Parser with Loader
+      import quiver.{LNode, LEdge}
+
+      val loadedJobConfigs = s.loadDefault("jobs" :: "jobs2" :: "jobs3" :: Nil) /* loads the configuration from the [[application.conf]] */
+      loadedJobConfigs.toEither must beRight((cfgs: List[JobConfig]) ⇒ cfgs.size must be_==(4))
+      loadedJobConfigs.toList must not be empty
+      var jdt : JobDescriptorTable = scala.collection.immutable.HashMap.empty[Int, JobConfig]
+      jdt = s.hydrateJobConfigs(loadedJobConfigs.toList.flatten).runS(jdt).value
+      jdt.contains(loadedJobConfigs.toList.flatten.head.id) must beTrue
+
+      val loadedWfConfigs = t.loadDefault("workflows" :: "workflows2" :: "workflows3" :: Nil) /* this loads the configuration from [[application.conf]] */
+      loadedWfConfigs.toEither must beRight((cfgs: List[WorkflowConfig]) ⇒ cfgs.size must be_==(3))
+      loadedWfConfigs.toList must not be empty
+      var wfdt : WorkflowDescriptorTable = scala.collection.immutable.HashMap.empty[Int, WorkflowConfig]
+      wfdt = t.hydrateWorkflowConfigs(loadedWfConfigs.toList.flatten).runS(wfdt).value
+      wfdt.contains(loadedWfConfigs.toList.flatten.head.id) must beTrue
+
+
+      // Note: The test is expecting to have exactly 2 sets of 4 subgraphs each of the form
+      // "src -> dest" because these represent the 2 workflows
+      loadedWfConfigs.toList.flatten.filter(_.id != 2).map(wfConfig ⇒ reify(jdt)(wfConfig)
+        must beRight( (nodesNEdges: (List[LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒  {
+              nodesNEdges._1.size must be_==(4)
+              nodesNEdges._2.size must be_==(4)
+              }
+              ))
+
+      // Note: The test is expecting to have exactly 2 sets of 4 subgraphs each of the form
+      // "src -> dest" because these represent the 2 workflows
+      loadedWfConfigs.toList.flatten.filter(_.id == 2).map(wfConfig ⇒ reify(jdt)(wfConfig)
+        must beRight( (nodesNEdges: (List[LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒  {
+              nodesNEdges._1.size must be_==(0)
+              nodesNEdges._2.size must be_==(0)
+              }
+              ))
+
+    }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
 }
