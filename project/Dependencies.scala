@@ -15,6 +15,7 @@ object Dependencies {
   val scalaLoggingVersion   = "3.9.0" // logging library
   val pureConfigVersion     = "0.9.1" // Scala library for removing boilerplate from reading configuration files
   val fastparseVersion      = "1.0.0" // Scala library for parsing ASTs, DSLs etc
+  val circeVersion          = "0.9.3" // Scala library for processing JSON
 
   val loggingLibs = Seq(
     "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
@@ -32,16 +33,16 @@ object Dependencies {
   val actorTest            = "com.typesafe.akka" %% "akka-testkit" % akkaVersion
   val pureConfig           = "com.github.pureconfig" %% "pureconfig" % pureConfigVersion
   val fastparse            = "com.lihaoyi" %% "fastparse" % fastparseVersion
+  val circeLibs            = Seq( "io.circe" %% "circe-core", "io.circe" %% "circe-generic", "io.circe" %% "circe-parser").map(_ % circeVersion)
 
   val scioLibs = Seq(
     "com.spotify" %% "scio-core" % scioVersion,
     "org.apache.beam" % "beam-runners-direct-java" % beamVersion,
-    // optional dataflow runner
-    // "org.apache.beam" % "beam-runners-google-cloud-dataflow-java" % beamVersion,
+    "org.apache.beam" % "beam-runners-google-cloud-dataflow-java" % beamVersion,
   )
 
   val scioTestLib = "com.spotify" %% "scio-test" % scioVersion
 
-  val generalLibs = actorLib :: catsLib :: quiverLib :: typesafeConfigLib :: pureConfig :: fastparse :: Nil ++ loggingLibs ++ scioLibs
+  val generalLibs = actorLib :: catsLib :: quiverLib :: typesafeConfigLib :: pureConfig :: fastparse :: Nil ++ loggingLibs ++ scioLibs ++ circeLibs
   val testLibs = Seq(specs2Test , specs2ScalaCheckTest, actorTest, scioTestLib, scalatestLib).map(_ % Test)
 }

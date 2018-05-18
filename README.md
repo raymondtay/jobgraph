@@ -2,6 +2,12 @@
 A multigraph approach to modelling workflows since a workflow is essentially a
 _job graph_.
 
+# Tutorials
+
+Use the `sbt tut` to generate the documentation for code examples. You would
+find the compiled code examples in the `<dir>/target/scala-2.12/tut/` directory
+where you can read and understand how to make API calls.
+
 # Goals
 
 Basic idea is to provide a mechanism that allows the user to define:
