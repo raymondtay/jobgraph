@@ -2,6 +2,8 @@ package hicoden.jobgraph.engine
 
 import hicoden.jobgraph._
 import akka.actor._
+import akka.stream.ActorMaterializer
+import akka.http.scaladsl.Http
 import scala.language.{higherKinds, postfixOps}
 import scala.util._
 import scala.concurrent.duration._
@@ -27,6 +29,7 @@ import java.util.UUID
 case class StartWorkflow(jobgraph: Workflow)
 case class StopWorkflow(wfId: WorkflowId)
 case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStates.States)
+case class SuperviseJob(wfId: WorkflowId, jobId: JobId)
 
 //
 // Engine should perform the following:
@@ -241,7 +244,7 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
 
 }
 
-object Engine extends App {
+object Engine extends App with JobCallbacks {
 
   /**
     * With [[Props]], we can create all kinds of different [[Engine]] actors
@@ -255,7 +258,10 @@ object Engine extends App {
   val waitTimeForCleanup = 4000
   val waitTimeForAsyncProcessing = 30000
 
-  val actorSystem = ActorSystem("EngineSystem")
+  implicit val actorSystem = ActorSystem("EngineSystem")
+  implicit val executionContext = actorSystem.dispatcher
+  implicit val actorMaterializer = ActorMaterializer()
+
   val engine = actorSystem.actorOf(Props(classOf[Engine]), "Engine")
 
   // load a job graph
@@ -264,6 +270,14 @@ object Engine extends App {
   // start a job graph running
   engine ! StartWorkflow(jobGraph)
 
+  // Bind the engine to serve ReST
+  val bindingFuture = Http().bindAndHandle(route, "0.0.0.0")
+  println(s"Server online at http://0.0.0.0:9000/\nPress RETURN to stop...")
+  scala.io.StdIn.readLine() // let it run until user presses return
+  bindingFuture
+    .flatMap(_.unbind()) // trigger unbinding from the port
+    .onComplete(_ ⇒ actorSystem.terminate()) // and shutdown when done
+
   Thread.sleep(waitTimeForAsyncProcessing)
 
   // stops the workflow aka "forced termination" of the jobgraph
@@ -271,7 +285,5 @@ object Engine extends App {
 
   Thread.sleep(waitTimeForCleanup)
 
-  // Stop the engine
-  actorSystem.terminate()
 }
 
