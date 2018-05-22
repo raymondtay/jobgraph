@@ -1,13 +1,24 @@
 package hicoden.jobgraph.configuration.step
 
 import scala.util.Try
+import hicoden.jobgraph.configuration.step.model.{ExecType, RunnerType}
 import hicoden.jobgraph.configuration.step.model._
 
 trait HOCONValidation {
-  def errorMessage(namespace: String) = s"Unable to load configuration from namespace: $namespace"
+  val namespace : String
+  def errorMessage = s"Unable to load configuration from namespace: $namespace"
 }
 
-object LoadFailure extends HOCONValidation
+case class LoadFailure(namespace: String) extends HOCONValidation
+case class RunnerTypeFailure(namespace: String) extends HOCONValidation {
+  override
+  def errorMessage = s"Allowed namespaces are ${RunnerType.values.mkString} but you have: $namespace"
+}
+
+case class ExecTypeFailure(namespace: String) extends HOCONValidation {
+  override
+  def errorMessage = s"Allowed namespaces are ${ExecType.values.mkString} but you have: $namespace"
+}
 
 /**
   * Read the Human-Optimized Config Object Notation specification
@@ -51,9 +62,29 @@ trait Parser {
   def loadDefaultByNamespace : Reader[String, LoadingResult[List[JobConfig]]] =
     Reader{ (namespace: String) ⇒
       Try{ loadConfigOrThrow[List[JobConfig]](namespace) }.toOption match {
-        case Some(cfgs) ⇒ cfgs.validNel
-        case None ⇒ LoadFailure.invalidNel
+        case Some(cfgs) ⇒
+          cfgs.map{cfg ⇒
+              val splitted = cfg.runner.runner.split(":")
+              if (splitted.size != 2) LoadFailure(namespace).invalidNel[JobConfig]
+              else {
+                val (left, right) = (splitted(0), splitted(1))
+                (validateRunnerType(left), validateExecType(right)).mapN((r, e) ⇒ if (r == None) RunnerTypeFailure(namespace).invalidNel[JobConfig] else if (e == None) ExecTypeFailure(namespace).invalidNel[JobConfig] else cfg.validNel[HOCONValidation])
+              }
+          }.sequence
+        case None ⇒ LoadFailure(namespace).invalidNel
       }
+    }
+
+  def validateRunnerType : Reader[String, Option[RunnerType.RunnerType]] = 
+    Reader{ (s: String) ⇒
+      import RunnerType._
+      Try{ RunnerType.withName(s) }.toOption.fold(none[RunnerType])((e: RunnerType) ⇒ e.some)
+    }
+
+  def validateExecType : Reader[String, Option[ExecType.ExecType]] = 
+    Reader{ (s: String) ⇒
+      import ExecType._
+      Try{ ExecType.withName(s) }.toOption.fold(none[ExecType])((e: ExecType) ⇒ e.some)
     }
 
 }

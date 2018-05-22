@@ -33,7 +33,7 @@ class StepLoaderSpecs extends mutable.Specification with ScalaCheck with Parser 
     import StepLoaderData.arbInvalidNamespaces
     "Using invalid namespace keys to lookup the step(s) will result in failures." >> prop { (ns: String) ⇒
       val loadedConfigs = loadDefault(ns :: Nil)
-      loadDefault(ns::Nil).toEither must beLeft((nel: NonEmptyList[HOCONValidation]) ⇒ nel.head.errorMessage(ns) must be_==(s"Unable to load configuration from namespace: $ns"))
+      loadDefault(ns::Nil).toEither must beLeft((nel: NonEmptyList[HOCONValidation]) ⇒ nel.head.errorMessage must be_==(s"Unable to load configuration from namespace: $ns"))
       val jdt : JobDescriptorTable = scala.collection.immutable.HashMap.empty[Int, JobConfig]
       hydrateJobConfigs(loadedConfigs.toList.flatten).runS(jdt).value.size must be_==(0)
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
