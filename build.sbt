@@ -35,7 +35,7 @@ addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.fu
 parallelExecution in Test := false
 
 packMain := Map("Job Engine" -> "hicoden.jobgraph.engine.Engine")
-
+packResourceDir += (baseDirectory.value / "scripts" -> "dataflow-scripts")
 unmanagedResourceDirectories in Compile += baseDirectory.value / "scripts"
 unmanagedResourceDirectories in Test += baseDirectory.value / "src" / "test" / "scripts"
 unmanagedResourceDirectories in Tut += baseDirectory.value / "tut-scripts"

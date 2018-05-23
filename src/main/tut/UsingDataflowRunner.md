@@ -19,7 +19,7 @@ class Demo {
       io.circe.Json.Null)
 }
 val demo = new Demo
-val r = new DataflowRunner
+val r = new DataflowMonitorRunner
 r.run(demo.ctx)(jsonParser.parse)
 
 ```

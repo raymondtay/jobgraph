@@ -1,5 +1,7 @@
 package hicoden.jobgraph
 
+import hicoden.jobgraph.configuration.step.model.JobConfig
+
 import quiver.{Graph ⇒ QGraph, LNode, LEdge, mkGraph}
 import com.typesafe.scalalogging.Logger
 
@@ -39,7 +41,7 @@ case class Workflow(jobgraph: QGraph[Job,UUID,String]) extends Step {
 //
 // TODO: Attributes ???? Need'em ?
 //
-case class Job(name: String) extends Step {
+case class Job(name: String, config: JobConfig = null) extends Step {
   private[jobgraph] val create_timestamp : java.time.Instant = Instant.now()
   private[jobgraph] val id : JobId = UUID.randomUUID
 }

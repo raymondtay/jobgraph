@@ -100,7 +100,7 @@ trait Concretizer {
   // labelled vertex and labelled edge.
   def reifyRelationships(jobIndexes: List[Int])(jobDescriptorTable: JobDescriptorTable) : Reader[List[Forward], (List[LNode[Job,JobId]], List[LEdge[Job,String]])] =
     Reader{ (edges: List[Forward]) ⇒
-      val jobNodes = collection.immutable.HashMap(jobIndexes.map(index ⇒ (index, Job(jobDescriptorTable(index).name))) : _*)
+      val jobNodes = collection.immutable.HashMap(jobIndexes.map(index ⇒ (index, Job(jobDescriptorTable(index).name, jobDescriptorTable(index)))) : _*)
       val nodesT = for {
         (index, job) ← jobNodes
       } yield (index, LNode(job,job.id))

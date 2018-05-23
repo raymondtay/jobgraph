@@ -7,6 +7,10 @@ import akka.http.scaladsl.Http
 import scala.language.{higherKinds, postfixOps}
 import scala.util._
 import scala.concurrent.duration._
+import hicoden.jobgraph.configuration.step.model.JobConfig
+import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
+import hicoden.jobgraph.configuration.step.JobDescriptorTable
+import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
 import hicoden.jobgraph.{ConvergeGraph, ScatterGatherGraph}        // a Digraph scatter-gatther
 import hicoden.jobgraph.fsm.{JobFSM, StartRun, StopRun}
 import java.util.UUID
@@ -26,7 +30,7 @@ import java.util.UUID
 //     and decide what to do next.
 //
 
-case class StartWorkflow(jobgraph: Workflow)
+case class StartWorkflow(workflowId: Int)
 case class StopWorkflow(wfId: WorkflowId)
 case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStates.States)
 case class SuperviseJob(wfId: WorkflowId, jobId: JobId)
@@ -38,7 +42,7 @@ case class SuperviseJob(wfId: WorkflowId, jobId: JobId)
 // (c) Update its internal structure and decides whether to push the execution to the next step(s) because there will be wait-times at certain control
 //     points - as decided by the digraph (take note that it can be a multi-graph)
 //
-class Engine extends Actor with ActorLogging with EngineStateOps {
+class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) extends Actor with ActorLogging with EngineStateOps with EngineOps {
   import cats._, data._, implicits._
   import cats.free._
   import WorkflowOps._
@@ -49,22 +53,40 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
   private[this] var activeWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
   private[this] var workersToWfLookup = collection.mutable.Map.empty[ActorPath, WorkflowId]
   private[this] var failedWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
+  private[this] var jdt : JobDescriptorTable = collection.immutable.HashMap.empty[Int, JobConfig]
+  private[this] var wfdt : WorkflowDescriptorTable  = collection.immutable.HashMap.empty[Int, WorkflowConfig]
+  
+  override def preStart() = {
+    val (_jdt, _wfdt) = prepareDescriptorTables(jobNamespaces, workflowNamespaces)
+    jdt  = _jdt
+    wfdt = _wfdt
+  }
 
   def receive : PartialFunction[Any, Unit] = {
 
-    case StartWorkflow(jobGraph) ⇒
-      logger.debug("[Engine] Received a job graph id:{}", jobGraph.id)
-      val workers = startWorkflow(jobGraph.id).fold(Set.empty[(ActorRef, Job)])(createWorkers(_))
-      if (workers.isEmpty) {
-        logger.error("""
-          [Engine] We just started a workflow {} where there are no start nodes.
-          [Engine] Workflow is {}
-          """, jobGraph.id, jobGraph)
-      } else {
-        activateWorkers(jobGraph.id)(workers)
-        workersToWfLookup = addToLookup(jobGraph.id)(workers.collect{ case (ref,_) ⇒ ref }).runS(workersToWfLookup).value
-        activeWorkflows   = addToActive(jobGraph.id)(workers.map(_._1)).runS(activeWorkflows).value
-        logger.info("[Engine] Started a job graph")
+    case StartWorkflow(workflowId) ⇒
+      sender !
+      extractWorkflowConfigBy(workflowId)(jdt, wfdt).fold{
+        logger.error(s"[Engine][StartWorkflow] The workflow-id giving: $workflowId does not exist in the system")
+        "No such id"
+        }{
+          (nodeEdges) ⇒
+            val jobGraph = createWf(nodeEdges._1)(nodeEdges._2)
+            logger.debug("[Engine] Received a job graph id:{}", jobGraph.id)
+            val workers = startWorkflow(jobGraph.id).fold(Set.empty[(ActorRef, Job)])(createWorkers(_))
+            if (workers.isEmpty) {
+              logger.error("""
+                [Engine] We just started a workflow {} where there are no start nodes.
+                [Engine] Workflow is {}
+                """, jobGraph.id, jobGraph)
+              jobGraph.id.toString
+            } else {
+              activateWorkers(jobGraph.id)(workers)
+              workersToWfLookup = addToLookup(jobGraph.id)(workers.collect{ case (ref,_) ⇒ ref }).runS(workersToWfLookup).value
+              activeWorkflows   = addToActive(jobGraph.id)(workers.map(_._1)).runS(activeWorkflows).value
+              logger.info("[Engine] Started a job graph")
+              jobGraph.id.toString
+            }
       }
 
     // Updating the workflow effectively means we do a few things:
@@ -245,6 +267,8 @@ class Engine extends Actor with ActorLogging with EngineStateOps {
 }
 
 object Engine extends App with JobCallbacks {
+  import akka.pattern.ask
+  import scala.concurrent._, duration._
 
   /**
     * With [[Props]], we can create all kinds of different [[Engine]] actors
@@ -262,13 +286,11 @@ object Engine extends App with JobCallbacks {
   implicit val executionContext = actorSystem.dispatcher
   implicit val actorMaterializer = ActorMaterializer()
 
-  val engine = actorSystem.actorOf(Props(classOf[Engine]), "Engine")
-
-  // load a job graph
-  val jobGraph = CLRSBumsteadGraph.workflow // some graph
+  val engine = actorSystem.actorOf(Props(classOf[Engine], "jobs":: Nil, "workflows" :: Nil), "Engine")
 
   // start a job graph running
-  engine ! StartWorkflow(jobGraph)
+  implicit val timeout = akka.util.Timeout(5 seconds)
+  val workflowId : WorkflowId = java.util.UUID.fromString(Await.result((engine ? StartWorkflow(0)).mapTo[String], timeout.duration))
 
   // Bind the engine to serve ReST
   val bindingFuture = Http().bindAndHandle(route, "0.0.0.0")
@@ -281,7 +303,7 @@ object Engine extends App with JobCallbacks {
   Thread.sleep(waitTimeForAsyncProcessing)
 
   // stops the workflow aka "forced termination" of the jobgraph
-  engine ! StopWorkflow(jobGraph.id)
+  engine ! StopWorkflow(workflowId)
 
   Thread.sleep(waitTimeForCleanup)
 
