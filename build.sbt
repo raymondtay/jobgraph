@@ -18,6 +18,7 @@ val codeCoverageSettings = Seq(
 // project settings
 lazy val jobgraph = (project in file("."))
   .settings(
+    version := "0.9",
     commonSettings ++ codeCoverageSettings,
     libraryDependencies ++= (generalLibs ++ testLibs)
   ).enablePlugins(PackPlugin, TutPlugin)

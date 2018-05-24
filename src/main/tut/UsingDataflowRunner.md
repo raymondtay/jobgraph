@@ -1,4 +1,4 @@
-Here is an example of how to use the Dataflow Runner and the scenario here
+Here is an example of how to use the `DataflowMonitorRunner` and the scenario here
 is that the jobid has been returned to the engine (via a callback called from
 the executing job) and we use the `DataflowRunner` to trigger the monitoring.
 
@@ -14,7 +14,7 @@ The parsed JSON payload is housed in the field name "returns" of the returned
 import hicoden.jobgraph.fsm._, runners._
 class Demo {
   val ctx =
-    Context(
+    MonitorContext(
       getClass.getClassLoader.getResource("fake_gcloud_monitor_job.sh").getPath.toString :: Nil, "2018-05-16_22_09_13-15128694865182730787",
       io.circe.Json.Null)
 }

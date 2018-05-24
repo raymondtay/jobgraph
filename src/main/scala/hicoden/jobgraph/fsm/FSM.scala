@@ -2,6 +2,8 @@ package hicoden.jobgraph.fsm
 
 import hicoden.jobgraph.{Job, JobId, JobStates, WorkflowId}
 import hicoden.jobgraph.engine.UpdateWorkflow
+import hicoden.jobgraph.fsm.runners._
+import hicoden.jobgraph.fsm.runners.runtime._
 import akka.actor._
 import scala.concurrent.duration._
 
@@ -41,6 +43,7 @@ import scala.language.postfixOps
 // Events
 case class StartRun(wfId: WorkflowId, job : Job, engine: ActorRef)
 case object StopRun
+case object Go
 
 // States
 sealed trait State
@@ -67,8 +70,8 @@ class JobFSM extends LoggingFSM[State, Data] {
       stop(FSM.Shutdown)
 
     case Event(StateTimeout, data) ⇒
-      log.info("Timed out from idle, going to active")
-      goto(Active) using Uninitialized
+      log.error("Did not receive any signal from Engine, stopping.")
+      stop(FSM.Failure("Did not receive signal from Engine within the time limit."))
 
     case Event(StartRun(wfId, job, engineActor), Uninitialized) ⇒
       log.info("Received the job: {} for workflow: {}", job.id, wfId)
@@ -78,6 +81,7 @@ class JobFSM extends LoggingFSM[State, Data] {
   onTransition {
     case Idle -> Active ⇒
       log.info("entering 'Active' from 'Idle'")
+      setTimer("Start Job", Go, timeout = 1 second)
     case Active -> Idle ⇒
       log.info("entering 'Idle' from 'Active'")
     case Active -> Active ⇒
@@ -87,11 +91,20 @@ class JobFSM extends LoggingFSM[State, Data] {
   // TODO:
   // (a) Lift timeout to configuration
   // (b) List out the Engine-triggered events vs FSM internal events
-  when(Active, stateTimeout = 3 second) {
+  when(Active, stateTimeout = 10 second) {
 
     case Event(StopRun, _) ⇒
       log.info("Stopping run")
       stop(FSM.Shutdown)
+
+    case Event(Go, Processing(wfId, job, engineRef)) ⇒
+      log.info(s"""
+        About to start ${wfId}
+        """)
+      val ctx = ExecContext(job.config)
+      val runner = new DataflowRunner
+      runner.run(ctx)(JobContextManifest.manifest)
+      stay()
 
     // Using the [[StateTimeout]], we can create a mechanism that is akin to
     // polling; a further use case is to create logging mechanisms
