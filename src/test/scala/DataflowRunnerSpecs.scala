@@ -5,11 +5,14 @@ import hicoden.jobgraph.configuration.step.model._
 import pureconfig._
 import pureconfig.error._
 import org.specs2._
+import org.specs2.concurrent.ExecutionEnv
 import org.scalacheck._
 import com.typesafe.config._
 import Arbitrary.{arbString ⇒ _, _}
 import Gen.{posNum, alphaStr, containerOfN, choose, pick, mapOf, listOf, listOfN, oneOf}
 import Prop.{forAll, throws, AnyOperators}
+import scala.concurrent._
+import scala.concurrent.duration._
 
 object RunnerData {
 
@@ -86,7 +89,7 @@ object RunnerData {
 // scripts which return a response) in order to check it here as the design
 // might change.
 //
-class DataflowRunnerSpecs extends Specification with ScalaCheck {
+class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with ScalaCheck {
   override def is = sequential ^ s2"""
     Check that DataflowRunner can actually trigger an java program $verifyCanRunJavaDataflowRunnerAndReturn
     Check that DataflowRunner can actually trigger an python program $verifyCanRunPythonDataflowRunnerAndReturn
@@ -95,20 +98,20 @@ class DataflowRunnerSpecs extends Specification with ScalaCheck {
   val minimumNumberOfTests = 20
   import cats._, data._, implicits._, Validated._
 
+  //implicit val ec = scala.concurrent.ExecutionContext.Implicits.global
+
   def verifyCanRunJavaDataflowRunnerAndReturn = {
     val jobConfig = RunnerData.genJavaJobConfig.sample
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
-    val result = runner.run(ctx)(runtime.JobContextManifest.manifest)
-    ok
+    runner.run(ctx)(runtime.JobContextManifest.manifest) must be_==(runtime.JobContextManifest.manifest(jobConfig.get)).awaitFor(500.millis)
   }
 
   def verifyCanRunPythonDataflowRunnerAndReturn = {
     val jobConfig = RunnerData.genPythonJobConfig.sample
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
-    val result = runner.run(ctx)(runtime.JobContextManifest.manifest)
-    ok
+    runner.run(ctx)(runtime.JobContextManifest.manifest) must be_==(runtime.JobContextManifest.manifest(jobConfig.get)).awaitFor(500.millis)
   }
 
 }

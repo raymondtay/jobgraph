@@ -36,7 +36,7 @@ object Dependencies {
   val actorStreamLib       = "com.typesafe.akka" %% "akka-stream"    % akkaVersion
   val actorTest            = "com.typesafe.akka" %% "akka-testkit"   % akkaVersion
   val pureConfig           = "com.github.pureconfig" %% "pureconfig" % pureConfigVersion
-  val circeLibs            = Seq( "io.circe" %% "circe-core", "io.circe" %% "circe-generic", "io.circe" %% "circe-parser").map(_ % circeVersion)
+  val circeLibs            = Seq( "io.circe" %% "circe-core", "io.circe" %% "circe-generic", "io.circe" %% "circe-parser", "io.circe" %% "circe-optics").map(_ % circeVersion)
   val akkaHttpLib          = "com.typesafe.akka" %% "akka-http" % akkaHttpVersion
 
   val scioLibs = Seq(

@@ -5,6 +5,7 @@ import hicoden.jobgraph.engine.UpdateWorkflow
 import hicoden.jobgraph.fsm.runners._
 import hicoden.jobgraph.fsm.runners.runtime._
 import akka.actor._
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 // scala language imports
@@ -44,6 +45,7 @@ import scala.language.postfixOps
 case class StartRun(wfId: WorkflowId, job : Job, engine: ActorRef)
 case object StopRun
 case object Go
+case class MonitorRun(googleDataflowId: String)
 
 // States
 sealed trait State
@@ -57,6 +59,8 @@ case object Uninitialized extends Data
 case class Processing(wfId: WorkflowId, job: Job, engineRef: ActorRef) extends Data
 
 class JobFSM extends LoggingFSM[State, Data] {
+
+  implicit val googleDataflowDispatcher : ExecutionContext = context.system.dispatchers.lookup("dataflow-dispatcher")
 
   startWith(Idle, Uninitialized)
 
@@ -88,10 +92,7 @@ class JobFSM extends LoggingFSM[State, Data] {
       log.info("You called Sire?")
   }
 
-  // TODO:
-  // (a) Lift timeout to configuration
-  // (b) List out the Engine-triggered events vs FSM internal events
-  when(Active, stateTimeout = 10 second) {
+  when(Active) {
 
     case Event(StopRun, _) ⇒
       log.info("Stopping run")
@@ -104,17 +105,21 @@ class JobFSM extends LoggingFSM[State, Data] {
       val ctx = ExecContext(job.config)
       val runner = new DataflowRunner
       runner.run(ctx)(JobContextManifest.manifest)
-      stay()
+      stay
 
-    // Using the [[StateTimeout]], we can create a mechanism that is akin to
-    // polling; a further use case is to create logging mechanisms
+    case Event(MonitorRun(googleDataflowId), _) ⇒
+      val ctx = MonitorContext(getClass.getClassLoader.getResource("gcloud_monitor_job.sh").getPath.toString :: Nil,
+                               googleDataflowId,
+                               io.circe.Json.Null)
+      val runner = new DataflowMonitorRunner
+      runner.run(ctx)(jsonParser.parse)
+      setTimer("Monitor Job", MonitorRun(googleDataflowId), timeout = 5 second)
+      stay
+
     case Event(StateTimeout, Processing(wfId, job, engineRef)) ⇒
       log.info("Finished processing, shutting down.")
       engineRef ! UpdateWorkflow(wfId, job.id, JobStates.finished)
       stop(FSM.Shutdown)
-      //log.info("Timed out after 3 seconds, going back to Idle")
-      //engineRef ! UpdateWorkflow(wfId, job.id, JobStates.forced_termination)
-      //goto(Active) using Processing(wfId, job, engineRef)
 
   }
 

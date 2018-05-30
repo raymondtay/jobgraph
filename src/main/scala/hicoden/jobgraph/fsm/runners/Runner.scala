@@ -5,6 +5,7 @@ import hicoden.jobgraph.fsm.runners.runtime.{JobContext, JobContextManifest, Fun
 import hicoden.jobgraph.configuration.step.model.JobConfig
 import scala.sys.process._
 import scala.language.existentials
+import scala.concurrent._
 import com.typesafe.scalalogging.Logger
 
 // 
@@ -30,8 +31,9 @@ class DataflowRunner extends ExecRunner {
    * @param f the transformer function that converts the configuration to
    *          a configuration that is only available during the execution of
    *          the job
+   * @return A future which carries the [[JobContext]] as payload
    */
-  def run(ctx: ExecContext)(f: JobConfig ⇒ JobContext = JobContextManifest.manifest) : Unit = {
+  def run(ctx: ExecContext)(f: JobConfig ⇒ JobContext = JobContextManifest.manifest)(implicit ec: ExecutionContext) : Future[JobContext] = Future {
     import Functions._
     val runtimeContext = f(ctx.jobConfig)
 

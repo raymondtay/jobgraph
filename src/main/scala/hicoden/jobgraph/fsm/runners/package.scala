@@ -1,5 +1,8 @@
 package hicoden.jobgraph.fsm
 
+import scala.concurrent._
+import hicoden.jobgraph.fsm.runners.runtime.{JobContext}
+
 //
 // The FSM will use "runners" which interacts with the targeted runners of the
 // Apache Beam Framework (e.g. Google Dataflow, Apache Flink, Apache Gearpump,
@@ -49,9 +52,9 @@ package object runners {
      * @param ctx
      * @param f a transformer that converts the configuration to a runtime
      * representation
-     * @return nothing
+     * @return A future which carries the [[JobContext]] as payload
      */
-    def run(ctx: ExecContext)(f: JobConfig ⇒ runtime.JobContext) : Unit
+    def run(ctx: ExecContext)(f: JobConfig ⇒ runtime.JobContext)(implicit ec: ExecutionContext) : Future[JobContext]
   }
 
 }

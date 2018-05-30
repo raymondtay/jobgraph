@@ -33,7 +33,7 @@ import java.util.UUID
 case class StartWorkflow(workflowId: Int)
 case class StopWorkflow(wfId: WorkflowId)
 case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStates.States)
-case class SuperviseJob(wfId: WorkflowId, jobId: JobId)
+case class SuperviseJob(wfId: WorkflowId, jobId: JobId, googleDataflowId: String)
 
 //
 // Engine should perform the following:
@@ -48,14 +48,15 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
   import WorkflowOps._
 
   // TODO:
-  // (a) ADTs should be accessible from any node in the cluster
+  // (a) ADTs should be accessible from any node in the cluster that's right we
+  //     are talking about peer-peer actor clusters. Coming up soon !
   //
   private[this] var activeWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
   private[this] var workersToWfLookup = collection.mutable.Map.empty[ActorPath, WorkflowId]
   private[this] var failedWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
   private[this] var jdt : JobDescriptorTable = collection.immutable.HashMap.empty[Int, JobConfig]
   private[this] var wfdt : WorkflowDescriptorTable  = collection.immutable.HashMap.empty[Int, WorkflowConfig]
-  
+
   override def preStart() = {
     val (_jdt, _wfdt) = prepareDescriptorTables(jobNamespaces, workflowNamespaces)
     jdt  = _jdt
@@ -126,6 +127,11 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
           }
         }
       )
+
+    case SuperviseJob(wfId, jobId, googleDataflowId) ⇒
+      logger.info(s"[Engine] Received $googleDataflowId")
+      // lookup the actor taking care of the jobId
+      // job ! MonitorRun(googleDataflowIdjobId)
 
     // De-activation means that we update the state of the workflow to
     // 'forced_termination' and the workers will be shutdown.
