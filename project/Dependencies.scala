@@ -52,5 +52,5 @@ object Dependencies {
                     quiverLib :: typesafeConfigLib :: pureConfig ::
                     fastparse :: akkaHttpLib :: Nil ++ loggingLibs ++ scioLibs ++ circeLibs
 
-  val testLibs = Seq(specs2Test , specs2ScalaCheckTest, actorTest, scioTestLib, scalatestLib, akkaHttpTestLib).map(_ % Test)
+  val testLibs = Seq(specs2Test , specs2ScalaCheckTest, actorTest, scioTestLib, scalatestLib, akkaHttpTestLib).map(_ % Test) ++ circeLibs
 }

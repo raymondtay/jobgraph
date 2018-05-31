@@ -1,6 +1,6 @@
 package hicoden.jobgraph.engine
 
-import hicoden.jobgraph.{Workflow, WorkflowId}
+import hicoden.jobgraph.{Job, JobId, Workflow, WorkflowId}
 import akka.actor.{ActorRef, ActorPath}
 
 /**
@@ -30,16 +30,29 @@ trait EngineStateOps {
     * @param state
     * @return updated state
     */
-  def addToLookup(wfId: WorkflowId) : Reader[Set[ActorRef], State[Map[ActorPath,WorkflowId],_]] = Reader{ (actorRefs: Set[ActorRef]) ⇒
+  def addToLookup(wfId: WorkflowId) : Reader[Set[(ActorRef,Job)], State[Map[ActorPath,WorkflowId],_]] = Reader{ (actorRefs: Set[(ActorRef,Job)]) ⇒
     for {
       s ← State.get[Map[ActorPath,WorkflowId]]
       _ ← State.modify{(lookupT: Map[ActorPath, WorkflowId]) ⇒
                            var mutM = collection.mutable.Map(lookupT.toList: _*)
-                           actorRefs.toList.map(ref ⇒ mutM += (ref.path → wfId))
+                           actorRefs.collect{case pair ⇒ pair._1}.toList.map(ref ⇒ mutM += (ref.path → wfId))
                            collection.immutable.Map(mutM.toList: _*)
                        }
       s2 ← State.get[Map[ActorPath,WorkflowId]]
     } yield s2
+  }
+
+  /**
+   * Lookup the FSM worker handling the job in question.
+   * @param wfId
+   * @param jobId
+   * @param state the active workflows
+   * @return updated state
+   */
+  def lookupActive(wfId: WorkflowId) : Reader[JobId, State[WFA, Option[(ActorRef,Job)]]] = Reader { (jobId: JobId) ⇒
+    for {
+      s ← State.get[WFA]
+    } yield s.get(wfId).fold(none[(ActorRef,Job)])(m ⇒ m.find( (p: (ActorRef,Job)) ⇒ p._2.id equals jobId ))
   }
 
   /**
@@ -65,11 +78,11 @@ trait EngineStateOps {
     * @param workers the set of references to actors
     * @return the workflow ADT of type [[WFA]]
     */
-  def addToActive(workflowId: WorkflowId) : Kleisli[State[WFA, ?], Set[ActorRef], WFA] =
-    Kleisli{ (workers: Set[ActorRef]) ⇒
+  def addToActive(workflowId: WorkflowId) : Kleisli[State[WFA, ?], Set[(ActorRef,Job)], WFA] =
+    Kleisli{ (workers: Set[(ActorRef, Job)]) ⇒
       for {
         s  ← State.get[WFA]
-        _  ← State.modify((active: WFA) ⇒ active += workflowId → workers)
+        _  ← State.modify((active: WFA) ⇒ active += workflowId → workers.toMap)
         s2 ← State.get[WFA]
       } yield s2
     }
@@ -96,13 +109,13 @@ trait EngineStateOps {
     * @param workers set of actor references to be replaced
     * @return the workflow ADT of type [[WFA]]
     */
-  def updateActive(workflowId: WorkflowId) : Kleisli[State[WFA, ?], Set[ActorRef], WFA] =
-    Kleisli{ (workers: Set[ActorRef]) ⇒
+  def updateActive(workflowId: WorkflowId) : Kleisli[State[WFA, ?], Set[(ActorRef,Job)], WFA] =
+    Kleisli{ (workers: Set[(ActorRef, Job)]) ⇒
       for {
         s  ← State.get[WFA]
         _  ← State.modify{(active: WFA) ⇒ 
                              active -= workflowId
-                             active += workflowId → workers
+                             active += workflowId → workers.toMap
                          }
         s2 ← State.get[WFA]
       } yield s2

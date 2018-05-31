@@ -9,6 +9,8 @@ package hicoden.jobgraph.fsm.runners
 //
 package object runtime {
 
+  import cats._, data._, implicits._
+  import hicoden.jobgraph.{JobId, WorkflowId}
   import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig}
 
   // This is pretty much the runtime representation of the job's configuration
@@ -20,7 +22,16 @@ package object runtime {
   // during the execution run of the Job s.t. [[JobConfig]] remains immutable
   // 
   trait JobContextManifest {
-    def manifest = (cfg: JobConfig) ⇒ JobContext(name = cfg.name, description = cfg.description, workdir = cfg.workdir, sessionid = cfg.sessionid, runner = cfg.runner)
+    def manifest(wfId: WorkflowId, jobId: JobId) =
+      (cfg: JobConfig)⇒
+        JobContext(name = cfg.name, description = cfg.description,
+                   workdir = cfg.workdir, sessionid = cfg.sessionid,
+                   runner = injectCallback(wfId, jobId)(cfg.runner))
+
+    private
+    def injectCallback(wfId: WorkflowId, jobId: JobId) = Reader{ (runner: Runner) ⇒
+      runner.copy(cliargs = runner.cliargs :+ s"--callback http://0.0.0.0:9000/flow/$wfId/jobId/$jobId")
+    }
   }
 
   object JobContextManifest extends JobContextManifest

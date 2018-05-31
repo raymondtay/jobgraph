@@ -1,7 +1,7 @@
 package hicoden.jobgraph.engine
 
 
-import hicoden.jobgraph.{WorkflowId, Workflow}
+import hicoden.jobgraph.{Job, WorkflowId, Workflow}
 
 import akka.actor.{ActorSystem,ActorPath}
 import akka.testkit.{ ImplicitSender, TestActors, TestKit }
@@ -24,15 +24,18 @@ class EngineStateOpsActorSpecs() extends TestKit(ActorSystem("EngineStateOpsActo
 
     "Add operation: Maintain mapping for 1 mapping" in {
       val echo = system.actorOf(TestActors.echoActorProps)
+      val echoJob = Job("echo")
       val workflowId = java.util.UUID.randomUUID
-      addToLookup(workflowId)(Set(echo)).runS(state).value.contains(echo.path) == true
+      addToLookup(workflowId)(Set((echo, echoJob))).runS(state).value.contains(echo.path) == true
     }
 
     "Add operation: Maintain mapping for 2 mapping" in {
       val echo1 = system.actorOf(TestActors.echoActorProps)
       val echo2 = system.actorOf(TestActors.echoActorProps)
+      val echoJob1 = Job("echo1")
+      val echoJob2 = Job("echo2")
       val workflowId = java.util.UUID.randomUUID
-      state = addToLookup(workflowId)(Set(echo1, echo2)).runS(state).value
+      state = addToLookup(workflowId)(Set( (echo1, echoJob1), (echo2, echoJob2))).runS(state).value
       state.contains(echo1.path) == true
       state.contains(echo2.path) == true
     }
@@ -41,8 +44,11 @@ class EngineStateOpsActorSpecs() extends TestKit(ActorSystem("EngineStateOpsActo
       val echo1 = system.actorOf(TestActors.echoActorProps)
       val echo2 = system.actorOf(TestActors.echoActorProps)
       val echo3 = system.actorOf(TestActors.echoActorProps)
+      val echoJob1 = Job("echo1")
+      val echoJob2 = Job("echo2")
+      val echoJob3 = Job("echo3")
       val workflowId = java.util.UUID.randomUUID
-      state = addToLookup(workflowId)(Set(echo1, echo2, echo3)).runS(state).value
+      state = addToLookup(workflowId)(Set( (echo1, echoJob1), (echo2, echoJob2), (echo3, echoJob3))).runS(state).value
       state.contains(echo1.path) == true
       state.contains(echo2.path) == true
       state.contains(echo3.path) == true

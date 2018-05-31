@@ -8,6 +8,8 @@ import akka.actor._
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
+import cats._, data._, implicits._
+
 // scala language imports
 import scala.language.postfixOps
 
@@ -45,7 +47,7 @@ import scala.language.postfixOps
 case class StartRun(wfId: WorkflowId, job : Job, engine: ActorRef)
 case object StopRun
 case object Go
-case class MonitorRun(googleDataflowId: String)
+case class MonitorRun(wfId: WorkflowId, jobId: JobId, engine: ActorRef, googleDataflowId: String)
 
 // States
 sealed trait State
@@ -104,23 +106,64 @@ class JobFSM extends LoggingFSM[State, Data] {
         """)
       val ctx = ExecContext(job.config)
       val runner = new DataflowRunner
-      runner.run(ctx)(JobContextManifest.manifest)
+      runner.run(ctx)(JobContextManifest.manifest(wfId, job.id))
       stay
 
-    case Event(MonitorRun(googleDataflowId), _) ⇒
+    case Event(MonitorRun(wfId, jobId, engineRef, googleDataflowId), _) ⇒
       val ctx = MonitorContext(getClass.getClassLoader.getResource("gcloud_monitor_job.sh").getPath.toString :: Nil,
                                googleDataflowId,
                                io.circe.Json.Null)
       val runner = new DataflowMonitorRunner
-      runner.run(ctx)(jsonParser.parse)
-      setTimer("Monitor Job", MonitorRun(googleDataflowId), timeout = 5 second)
-      stay
+      GoogleDataflowFunctions.interpretJobResult(runner.run(ctx)(jsonParser.parse)).
+        fold(forcedStop(wfId, jobId, engineRef)(googleDataflowId))(decideToStopOrContinue(wfId, jobId, engineRef, googleDataflowId)(_))
+
 
     case Event(StateTimeout, Processing(wfId, job, engineRef)) ⇒
       log.info("Finished processing, shutting down.")
       engineRef ! UpdateWorkflow(wfId, job.id, JobStates.finished)
       stop(FSM.Shutdown)
 
+  }
+
+  /**
+    * Invoked iff when we cannot parse the result in JSON format
+    * @param wfId
+    * @param jobId
+    * @param engineRef
+    * @param googleDataflowId
+    * @return Transition to [[FSM.Failure]] state
+    */
+  def forcedStop(wfId: WorkflowId, jobId: JobId, engineRef: ActorRef) =
+    Reader{ (googleDataflowId: String) ⇒
+      engineRef ! UpdateWorkflow(wfId, jobId, JobStates.forced_termination)
+      stop(FSM.Failure(s"[FSM] could not parse the response from Google as Json for jobId: $googleDataflowId, forced abort."))
+    }
+
+  /**
+    * Interprets the result (after parsing the JSON structure returned by
+    * Google Dataflow). The job's state is updated for the following states:
+    * (a) JOB_STATE_DONE => normal completion
+    * (b) JOB_STATE_CANCELLED => forced termination so job will reflect the same
+    * (c) everything else will mean it will continue to be monitored
+    * @param wfId
+    * @param jobId
+    * @param engineRef
+    * @param googleDataflowId
+    * @return Transition to either (a) same state i.e. Active, (b) stops either
+    * normally or Shutsdown
+    */
+  def decideToStopOrContinue(wfId: WorkflowId, jobId: JobId, engineRef: ActorRef, googleDataflowId: String) = Reader{ (result: (String,String,GoogleDataflowJobStatuses.GoogleDataflowJobStatus, String)) ⇒
+    if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_DONE) {
+      engineRef ! UpdateWorkflow(wfId, jobId, JobStates.finished)
+      stop(FSM.Normal)
+    }
+    else if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_CANCELLED) {
+      engineRef ! UpdateWorkflow(wfId, jobId, JobStates.forced_termination)
+      stop(FSM.Shutdown)
+    } else {
+      setTimer("Monitor Job", MonitorRun(wfId, jobId, engineRef, googleDataflowId), timeout = 10 second)
+      stay
+    }
   }
 
   initialize()

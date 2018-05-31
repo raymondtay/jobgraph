@@ -98,20 +98,22 @@ class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with
   val minimumNumberOfTests = 20
   import cats._, data._, implicits._, Validated._
 
-  //implicit val ec = scala.concurrent.ExecutionContext.Implicits.global
-
   def verifyCanRunJavaDataflowRunnerAndReturn = {
+    val wfId = java.util.UUID.randomUUID
+    val jobId = java.util.UUID.randomUUID
     val jobConfig = RunnerData.genJavaJobConfig.sample
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
-    runner.run(ctx)(runtime.JobContextManifest.manifest) must be_==(runtime.JobContextManifest.manifest(jobConfig.get)).awaitFor(500.millis)
+    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId)(jobConfig.get)).awaitFor(500.millis)
   }
 
   def verifyCanRunPythonDataflowRunnerAndReturn = {
+    val wfId = java.util.UUID.randomUUID
+    val jobId = java.util.UUID.randomUUID
     val jobConfig = RunnerData.genPythonJobConfig.sample
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
-    runner.run(ctx)(runtime.JobContextManifest.manifest) must be_==(runtime.JobContextManifest.manifest(jobConfig.get)).awaitFor(500.millis)
+    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId)(jobConfig.get)).awaitFor(500.millis)
   }
 
 }

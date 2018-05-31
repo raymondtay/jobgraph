@@ -33,7 +33,7 @@ class DataflowRunner extends ExecRunner {
    *          the job
    * @return A future which carries the [[JobContext]] as payload
    */
-  def run(ctx: ExecContext)(f: JobConfig ⇒ JobContext = JobContextManifest.manifest)(implicit ec: ExecutionContext) : Future[JobContext] = Future {
+  def run(ctx: ExecContext)(f: JobConfig ⇒ JobContext)(implicit ec: ExecutionContext) : Future[JobContext] = Future {
     import Functions._
     val runtimeContext = f(ctx.jobConfig)
 
@@ -73,6 +73,10 @@ class DataflowMonitorRunner extends MonitorRunner {
    * The program given at the [[locationOfProgram]] would execute with the 
    * environment variable of JOB_ID (that is google's requirement) and we
    * capture what we see (along with the errors)
+   *
+   * Note: JobEngine would invoke the "/bin/sh" to run the script so you should
+   *       be aware of "sh"; support for other shells is not planned.
+   *
    * @param ctx configuration inorder to run the monitoring
    * @param f the function to apply onto the result returned
    * @return the transformed context if successful (the payload is embedded)
@@ -80,7 +84,7 @@ class DataflowMonitorRunner extends MonitorRunner {
    */
   def run[A](ctx: MonitorContext[A])(f: String ⇒ A) : MonitorContext[A] = {
     val result : Either[Throwable,String] = scala.util.Try{
-      Process(ctx.locationOfProgram, cwd = None, extraEnv = "JOB_ID" -> ctx.jobId).!!
+      Process("sh" :: ctx.locationOfProgram, cwd = None, extraEnv = "JOB_ID" -> ctx.jobId).!!
     }.toEither
     result.fold(onError(ctx), onSuccess(ctx)(f))  
   }

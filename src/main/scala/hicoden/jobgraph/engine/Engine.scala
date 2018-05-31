@@ -12,7 +12,7 @@ import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
 import hicoden.jobgraph.{ConvergeGraph, ScatterGatherGraph}        // a Digraph scatter-gatther
-import hicoden.jobgraph.fsm.{JobFSM, StartRun, StopRun}
+import hicoden.jobgraph.fsm.{JobFSM, StartRun, StopRun, MonitorRun}
 import java.util.UUID
 
 //
@@ -51,9 +51,9 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
   // (a) ADTs should be accessible from any node in the cluster that's right we
   //     are talking about peer-peer actor clusters. Coming up soon !
   //
-  private[this] var activeWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
+  private[this] var activeWorkflows   = collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]]
   private[this] var workersToWfLookup = collection.mutable.Map.empty[ActorPath, WorkflowId]
-  private[this] var failedWorkflows   = collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
+  private[this] var failedWorkflows   = collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]]
   private[this] var jdt : JobDescriptorTable = collection.immutable.HashMap.empty[Int, JobConfig]
   private[this] var wfdt : WorkflowDescriptorTable  = collection.immutable.HashMap.empty[Int, WorkflowConfig]
 
@@ -83,8 +83,8 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
               jobGraph.id.toString
             } else {
               activateWorkers(jobGraph.id)(workers)
-              workersToWfLookup = addToLookup(jobGraph.id)(workers.collect{ case (ref,_) ⇒ ref }).runS(workersToWfLookup).value
-              activeWorkflows   = addToActive(jobGraph.id)(workers.map(_._1)).runS(activeWorkflows).value
+              workersToWfLookup = addToLookup(jobGraph.id)(workers).runS(workersToWfLookup).value
+              activeWorkflows   = addToActive(jobGraph.id)(workers).runS(activeWorkflows).value
               logger.info("[Engine] Started a job graph")
               jobGraph.id.toString
             }
@@ -103,7 +103,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
           logFailure.run(error) >>
           dropWorkflowFromActive(activeWorkflows, failedWorkflows)(wfId).bimap(
             (errorMessage: String) ⇒ logger.error(s"[Engine][UpdateWorkflow] Error in updating workflow with message: $errorMessage ."),
-            (pair: (Map[WorkflowId, Set[ActorRef]], Map[WorkflowId, Set[ActorRef]])) ⇒ {
+            (pair: (Map[WorkflowId, Map[ActorRef, Job]], Map[WorkflowId, Map[ActorRef, Job]])) ⇒ {
               activeWorkflows = pair._1
               failedWorkflows = pair._2
             }
@@ -128,8 +128,20 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
         }
       )
 
+    // Lookup in the active workflows info and try to find the [[wfId]] and
+    // [[jobId]] and if found, we trigger the monitoring to happen.
     case SuperviseJob(wfId, jobId, googleDataflowId) ⇒
-      logger.info(s"[Engine] Received $googleDataflowId")
+      logger.info(s"[Engine][SuperviseJob] Received $wfId $jobId $googleDataflowId")
+      activeWorkflows.contains(wfId) match {
+        case true  ⇒
+          lookupActive(wfId)(jobId).runA(activeWorkflows).value.fold(logger.warn(s"Did not locate the job: $jobId")){
+            (p: (ActorRef, Job)) ⇒
+              p._1 ! MonitorRun(wfId, jobId, self, googleDataflowId)
+              logger.info(s"[Engine][SuperviseJob] Engine will start supervising Google dataflow job: $googleDataflowId")
+          }
+        case false ⇒ logger.error(s"Did not see either workflow:$wfId , job:$jobId")
+      }
+
       // lookup the actor taking care of the jobId
       // job ! MonitorRun(googleDataflowIdjobId)
 
@@ -165,7 +177,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     * @param jobs the set of jobs we shall be creating workers for
     * @return the update active storage
     */
-  def startJobs(wfId: WorkflowId)(active: Map[WorkflowId, Set[ActorRef]], lookup: Map[ActorPath, WorkflowId]) : Reader[Vector[Job], Either[(Map[WorkflowId, Set[ActorRef]], Map[ActorPath, WorkflowId]), (Map[WorkflowId, Set[ActorRef]], Map[ActorPath, WorkflowId])]] = Reader{ (jobs: Vector[Job]) ⇒
+  def startJobs(wfId: WorkflowId)(active: Map[WorkflowId, Map[ActorRef,Job]], lookup: Map[ActorPath, WorkflowId]) : Reader[Vector[Job], Either[(Map[WorkflowId, Map[ActorRef,Job]], Map[ActorPath, WorkflowId]), (Map[WorkflowId, Map[ActorRef, Job]], Map[ActorPath, WorkflowId])]] = Reader{ (jobs: Vector[Job]) ⇒
     val startedNodes : Either[Throwable, Vector[Option[Boolean]]] = jobs.map(job ⇒ updateWorkflow(wfId)(job.id)(JobStates.start)).sequence
     startedNodes.bimap(
       (err: Throwable ) ⇒ (active, lookup),
@@ -173,8 +185,8 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
         val workers = createWorkers(Set(jobs:_*))
         activateWorkers(wfId)(workers)
         (
-          addToActive(wfId)(workers.map(_._1)).runS(active).value,
-          addToLookup(wfId)(workers.map(_._1)).runS(lookup).value
+          addToActive(wfId)(workers).runS(active).value,
+          addToLookup(wfId)(workers).runS(lookup).value
         )
       }
     )
@@ -187,7 +199,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     * @param wfId
     * @return a 2-tuple where (failed + wfId, active - wfId)
     */
-  def dropWorkflowFromActive(active: Map[WorkflowId, Set[ActorRef]], failed: Map[WorkflowId, Set[ActorRef]]) = Reader{ (wfId: WorkflowId) ⇒
+  def dropWorkflowFromActive(active: Map[WorkflowId, Map[ActorRef, Job]], failed: Map[WorkflowId, Map[ActorRef, Job]]) = Reader{ (wfId: WorkflowId) ⇒
     Either.cond(
       active.contains(wfId),
       (failed + (wfId → active(wfId)), active - wfId),
@@ -228,7 +240,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     Either.cond(
       workflows.contains(wfId),
       {
-        workflows(wfId).map(actor ⇒ actor ! StopRun)
+        workflows(wfId).map(actor ⇒ actor._1 ! StopRun)
         removeFromActive(wfId).runS(workflows).value
       },
       s"[DeactivateWorkers] Did not discover workflow $wfId in the internal state."

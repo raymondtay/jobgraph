@@ -1,6 +1,6 @@
 package hicoden.jobgraph.engine
 
-import hicoden.jobgraph.{WorkflowId, Workflow}
+import hicoden.jobgraph.{Job, WorkflowId, Workflow}
 
 import akka.actor._
 import org.specs2._
@@ -16,7 +16,7 @@ import Prop.{forAll, throws, AnyOperators}
 //
 object EngineStateOpsData {
 
-  def emptyActiveWF : WFA = scala.collection.mutable.Map.empty[WorkflowId, Set[ActorRef]]
+  def emptyActiveWF : WFA = scala.collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]]
 
   def genEmptyWFA : Gen[WFA] = oneOf(emptyActiveWF :: Nil)
 
@@ -36,29 +36,29 @@ object EngineStateFunctions extends EngineStateOps {
 
   import cats._, data._, implicits._
 
-  def addAndRemove(wfId: WorkflowId)(wrks: Set[ActorRef]) = Reader{ (wfQ: WFA) ⇒
+  def addAndRemove(wfId: WorkflowId)(wrks: Set[(ActorRef,Job)]) = Reader{ (wfQ: WFA) ⇒
     addToActive(wfId)(wrks).runS(wfQ) >>= ( removeFromActive(wfId).runS(_) )
   }
 
-  def addTwiceAndRemoveOnce(wfId: WorkflowId, wfId2: WorkflowId)(wrks: Set[ActorRef], wrks2: Set[ActorRef]) = Reader { (wfQ: WFA) ⇒
+  def addTwiceAndRemoveOnce(wfId: WorkflowId, wfId2: WorkflowId)(wrks: Set[(ActorRef,Job)], wrks2: Set[(ActorRef,Job)]) = Reader { (wfQ: WFA) ⇒
     addToActive(wfId)(wrks).runS(wfQ) >>=
       ( addToActive(wfId2)(wrks2).runS(_) >>=
         (removeFromActive(wfId).runS(_)) )
   }
 
-  def addThriceAndRemoveFirst(wfId: WorkflowId, wfId2: WorkflowId, wfId3: WorkflowId)(wrks: Set[ActorRef], wrks2: Set[ActorRef], wrks3: Set[ActorRef]) = Reader { (wfQ: WFA) ⇒
+  def addThriceAndRemoveFirst(wfId: WorkflowId, wfId2: WorkflowId, wfId3: WorkflowId)(wrks: Set[(ActorRef,Job)], wrks2: Set[(ActorRef,Job)], wrks3: Set[(ActorRef,Job)]) = Reader { (wfQ: WFA) ⇒
     addToActive(wfId)(wrks).runS(wfQ) >>=
       ( addToActive(wfId2)(wrks2).runS(_) >>=
         ( addToActive(wfId3)(wrks3).runS(_) >>=
           (removeFromActive(wfId).runS(_))) )
   }
 
-  def addThriceAndRemoveFirstUpdateThird(wfId: WorkflowId, wfId2: WorkflowId, wfId3: WorkflowId)(wrks: Set[ActorRef], wrks2: Set[ActorRef], wrks3: Set[ActorRef]) = Reader { (wfQ: WFA) ⇒
+  def addThriceAndRemoveFirstUpdateThird(wfId: WorkflowId, wfId2: WorkflowId, wfId3: WorkflowId)(wrks: Set[(ActorRef,Job)], wrks2: Set[(ActorRef,Job)], wrks3: Set[(ActorRef,Job)]) = Reader { (wfQ: WFA) ⇒
     addToActive(wfId)(wrks).runS(wfQ) >>=
       ( addToActive(wfId2)(wrks2).runS(_) >>=
         ( addToActive(wfId3)(wrks3).runS(_) >>=
           (removeFromActive(wfId).runS(_) >>= 
-            (updateActive(wfId3)(Set(ActorRef.noSender)).runS(_)))) )
+            (updateActive(wfId3)(Set((ActorRef.noSender, Job("dummy")))).runS(_)))) )
   }
 
 }
@@ -80,7 +80,7 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
     import EngineStateOpsData.arbEmptyWfStorageGenerator
     property("After being initiated, should be non-empty when workflows are added to it.") = forAll{ (activeWorkflow: WFA) ⇒
       getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
-      val (workflowId, workers) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
+      val (workflowId, workers) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
       val workflows = addToActive(workflowId)(workers).runS(activeWorkflow).value
       workflows.size == 1
     }
@@ -91,8 +91,8 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
     property("When adding the workflow followed by remove the same workflow from an initial workflow state i.e. 'empty'; the result structure should be still empty.") = forAll{ (activeWorkflow: WFA) ⇒
       import cats._, data._, implicits._
       getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
-      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
-      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
+      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
+      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
       val workflows = (addToActive(workflowId1)(workers1).runS(activeWorkflow) >>= ((newWorkflow: WFA) ⇒ removeFromActive(workflowId1).runS(newWorkflow))).value
       workflows.size == 0
     }
@@ -105,7 +105,7 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
       import EngineStateFunctions.addAndRemove
 
       getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
-      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
+      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
 
       val workflows : WFA = addAndRemove(workflowId1)(workers1)(activeWorkflow).value
       val workflows2 : WFA = addAndRemove(workflowId1)(workers1)(workflows).value
@@ -121,8 +121,8 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
       import EngineStateFunctions.{addAndRemove, addTwiceAndRemoveOnce}
 
       getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
-      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
-      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
+      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
+      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
 
       val workflows : WFA = addAndRemove(workflowId1)(workers1)(activeWorkflow).value
 
@@ -140,9 +140,9 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
       import EngineStateFunctions.{addAndRemove, addTwiceAndRemoveOnce, addThriceAndRemoveFirst}
 
       getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
-      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
-      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
-      val (workflowId3, workers3) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
+      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
+      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
+      val (workflowId3, workers3) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
 
       val workflows : WFA = addAndRemove(workflowId1)(workers1)(activeWorkflow).value
       !workflows.contains(workflowId1) == true
@@ -171,7 +171,7 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
       import EngineStateFunctions.{addAndRemove, addTwiceAndRemoveOnce, addThriceAndRemoveFirst}
 
       getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
-      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
+      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
 
       val workflows : WFA = updateActive(workflowId1)(workers1).runS(activeWorkflow).value
       !workflows.contains(workflowId1) == false
@@ -187,9 +187,9 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
 
       getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
 
-      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
-      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
-      val (workflowId3, workers3) = (java.util.UUID.randomUUID, Set.empty[ActorRef]) 
+      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
+      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
+      val (workflowId3, workers3) = (java.util.UUID.randomUUID, Set.empty[(ActorRef,Job)]) 
 
       val workflows : WFA = updateActive(workflowId1)(workers1).runS(activeWorkflow).value
       !workflows.contains(workflowId1) == false
@@ -199,9 +199,40 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
       workflows2.size == 2
       !workflows2.contains(workflowId1) == true
       workflows2.contains(workflowId2) == true
+      lookupActive(workflowId1)(java.util.UUID.randomUUID).runA(workflows2).value == None
       workflows2.find(_._1 equals workflowId3).fold(false)(pair ⇒ pair._2.size == 1) // this should always return 'true'
       workflows2.contains(workflowId3) == true
 
+    }
+  }
+
+  {
+    import EngineStateOpsData.arbEmptyWfStorageGenerator
+    property("When updates are applied to a workflow ∉ of the workflow ADT, it will be like a removal followed by an insert effectively.") = forAll{ (activeWorkflow: WFA) ⇒
+      import cats._, data._, implicits._
+      import EngineStateFunctions.{addAndRemove, addTwiceAndRemoveOnce, addThriceAndRemoveFirstUpdateThird}
+
+      getCurrentActiveWorkflows.runS(activeWorkflow).value == Map()
+
+      val job1 = Job("job1")
+      val job2 = Job("job2")
+      val job3 = Job("job3")
+      val (workflowId1, workers1) = (java.util.UUID.randomUUID, Set(ActorRef.noSender -> job1)) 
+      val (workflowId2, workers2) = (java.util.UUID.randomUUID, Set(ActorRef.noSender -> job2)) 
+      val (workflowId3, workers3) = (java.util.UUID.randomUUID, Set(ActorRef.noSender -> job3)) 
+
+      val workflows : WFA = updateActive(workflowId1)(workers1).runS(activeWorkflow).value
+      !workflows.contains(workflowId1) == false
+      workflows.size == 1
+
+      val workflows2 : WFA = addThriceAndRemoveFirstUpdateThird(workflowId1, workflowId2, workflowId3)(workers1, workers2, workers3)(workflows).value
+      workflows2.size == 2
+      !workflows2.contains(workflowId1) == true
+      workflows2.contains(workflowId2) == true
+      lookupActive(workflowId2)(java.util.UUID.randomUUID).runA(workflows2).value == None
+      lookupActive(workflowId2)(job2.id).runA(workflows2).value == Some((ActorRef.noSender, job2))
+      workflows2.find(_._1 equals workflowId3).fold(false)(pair ⇒ pair._2.size == 1) // this should always return 'true'
+      workflows2.contains(workflowId3) == true
     }
   }
 

@@ -2,7 +2,7 @@ import Dependencies._
 
 // Settings
 val commonSettings = Seq(
-  name := "Job Engine",
+  name := "JobEngine",
   organization := "org.nugit",
   description := "Multigraph Job Modelling",
   scalaVersion := "2.12.4",
@@ -35,8 +35,25 @@ addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.fu
 // All tests are run sequentially
 parallelExecution in Test := false
 
-packMain := Map("Job Engine" -> "hicoden.jobgraph.engine.Engine")
-packResourceDir += (baseDirectory.value / "scripts" -> "dataflow-scripts")
+// sbt-pack mandates that all settings are mapped by the name of the key
+packMain           := Map("JobEngine" -> "hicoden.jobgraph.engine.Engine")
+packExtraClasspath := Map("JobEngine" -> Seq("${PROG_HOME}/dataflow-scripts"))
+packJvmOpts        := Map("JobEngine" -> Seq("-Xms4G",
+                                             "-Xmx4G",
+                                             "-XX:+UseParNewGC",
+                                             "-XX:+UseConcMarkSweepGC",
+                                             "-XX:+CMSParallelRemarkEnabled",
+                                             "-XX:SurvivorRatio=8",
+                                             "-XX:MaxTenuringThreshold=1",
+                                             "-XX:CMSInitiatingOccupancyFraction=75",
+                                             "-XX:+UseCMSInitiatingOccupancyOnly",
+                                             "-XX:CMSWaitDuration=10000",
+                                             "-XX:+CMSParallelInitialMarkEnabled",
+                                             "-XX:+CMSEdenChunksRecordAlways"))
+
+packResourceDir    += (baseDirectory.value / "scripts" -> "dataflow-scripts")
+
+unmanagedClasspath           in Runtime += baseDirectory.value / "dataflow-scripts"
 unmanagedResourceDirectories in Compile += baseDirectory.value / "scripts"
 unmanagedResourceDirectories in Test += baseDirectory.value / "src" / "test" / "scripts"
 unmanagedResourceDirectories in Tut += baseDirectory.value / "tut-scripts"

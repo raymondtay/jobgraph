@@ -5,7 +5,7 @@ import akka.actor.ActorRef
 
 package object engine {
 
-  type WFA = collection.mutable.Map[WorkflowId, Set[ActorRef]]
+  type WFA = collection.mutable.Map[WorkflowId, Map[ActorRef, Job]]
   type WFI = collection.mutable.Map[WorkflowId, Workflow]
   type ActorRefString = String
 
