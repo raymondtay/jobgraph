@@ -106,6 +106,49 @@ class DataflowMonitorRunner extends MonitorRunner {
 
 }
 
+class DataflowJobTerminationRunner extends TerminationRunner {
+
+  import cats._, data._, implicits._
+
+  val logger = Logger(classOf[DataflowJobTerminationRunner])
+
+  /**
+   * The program given at the [[locationOfProgram]] would execute with the 
+   * environment variable of JOB_ID (that is google's requirement) and we
+   * capture what we see (along with the errors)
+   *
+   * Note: JobEngine would invoke the "/bin/sh" to run the script so you should
+   *       be aware of "sh"; support for other shells is not planned.
+   *
+   * @param ctx configuration inorder to run the monitoring
+   * @param f the function to apply onto the result returned
+   * @return the transformed context if successful (the payload is embedded)
+   *         else the original context
+   */
+  def run(ctx: DataflowTerminationContext)(f: String ⇒ String) : DataflowTerminationContext = {
+    val result : Either[Throwable,List[String]] = scala.util.Try{
+      Process("sh" :: ctx.locationOfProgram, cwd = None, extraEnv = "JOB_ID" -> ctx.jobIds.mkString(" ")).lineStream.toList
+    }.toEither
+    result.fold(onError(ctx), onSuccess(ctx)(f))  
+  }
+ 
+  // If error occurs, a log is produced and we do not alter the context but
+  // return it
+  def onError[A](ctx: DataflowTerminationContext) = (error: Throwable) ⇒ {
+    logger.error(s"Unable to trigger program with this error: ${error.getStackTrace}")
+    ctx
+  }
+
+  // The data string should be a JSON string (afaik from Google's GCloud sdk)
+  // and we shall attempt to parse it and return the JSON object for further
+  // processing.
+  def onSuccess(ctx: DataflowTerminationContext)(f: String ⇒ String) = (data: List[String]) ⇒ {
+    logger.info("About to parse the return data and validate it.")
+    ctx.copy(returns = data.map(f(_)))
+  }
+
+}
+
 object jsonParser {
   import io.circe._, io.circe.parser.{parse ⇒ cparse, _}
 

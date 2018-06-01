@@ -24,6 +24,26 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
   // the engine
   val engine = akka.actor.Actor.noSender
 
+  "The call back to cancel Google Dataflow jobs" should {
+
+    "return a non-HTTP-200 code when workflow is a UUID, engine is NOT available and workflowId is valid." in {
+      val wfId = java.util.UUID.randomUUID
+      Post(s"/flow/$wfId/cancel") ~> route ~> check {
+        status shouldEqual InternalServerError
+        responseAs[String] shouldEqual s"There was an internal server error."
+      }
+    }
+
+    "return a non-HTTP-200 code when workflow is not a UUID, engine is NOT available." in {
+      val wfId = "not-a-uuid"
+      Post(s"/flow/$wfId/cancel") ~> route ~> check {
+        status shouldEqual InternalServerError
+        responseAs[String] shouldEqual s"There was an internal server error."
+      }
+    }
+
+  }
+
   "The call back by executing jobs" should {
 
     "return a non HTTP-200 code when workflow and job ids are UUIDs but engine is no longer available." in {
@@ -65,7 +85,26 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
   // capture the callbacks.
   val engine = actorSystem.actorOf(akka.actor.Props[Echo])
 
-  "The call back by executing jobs" should {
+  "The call back to cancel Google Dataflow jobs" should {
+
+    "return a HTTP-200 code when workflow is a UUID, engine is available and workflowId is valid." in {
+      val wfId = java.util.UUID.randomUUID
+      Post(s"/flow/$wfId/cancel") ~> route ~> check {
+        responseAs[String] shouldEqual s"OK. Engine will stop Dataflow for workflow-id: $wfId"
+      }
+    }
+
+    "return a non-HTTP-200 code when workflow is not a UUID, engine is available." in {
+      val wfId = "not-a-uuid"
+      Post(s"/flow/$wfId/cancel") ~> route ~> check {
+        status shouldEqual InternalServerError
+        responseAs[String] shouldEqual s"There was an internal server error."
+      }
+    }
+
+  }
+
+  "The call back to begin monitoring of the job" should {
 
     "return a HTTP-200 code when workflow and job ids are UUIDs and engine is available but no json payload is detected." in {
       val wfId = java.util.UUID.randomUUID

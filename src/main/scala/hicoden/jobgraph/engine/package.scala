@@ -8,6 +8,7 @@ package object engine {
   type WFA = collection.mutable.Map[WorkflowId, Map[ActorRef, Job]]
   type WFI = collection.mutable.Map[WorkflowId, Workflow]
   type ActorRefString = String
+  type GoogleDataflowId = String
 
   implicit def mutableMapToImmute[A,B](mutM: collection.mutable.Map[A,B]) = collection.immutable.Map(mutM.toList: _*)
   implicit def immutableMapToMutable[A,B](m: collection.immutable.Map[A,B]) = collection.mutable.Map(m.toList: _*)

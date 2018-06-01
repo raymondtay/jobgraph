@@ -1,6 +1,7 @@
 package hicoden.jobgraph.fsm
 
 import scala.concurrent._
+import hicoden.jobgraph.engine.GoogleDataflowId
 import hicoden.jobgraph.fsm.runners.runtime.{JobContext}
 
 //
@@ -19,6 +20,8 @@ package object runners {
     * object/result is carried in the [[returns]] of the type parameter 'A'.
     */
   case class MonitorContext[A](locationOfProgram : List[String], jobId : String, returns: A)
+
+  case class DataflowTerminationContext(locationOfProgram : List[String], jobIds : List[GoogleDataflowId], returns: List[String] = Nil)
 
   /**
    * The context carries the job's configuration and its only transformed in
@@ -43,6 +46,24 @@ package object runners {
       * @return the ctx where the result is injected
       */
     def run[A](ctx: MonitorContext[A])(f: String ⇒ A) : MonitorContext[A]
+  }
+
+  //
+  // When a concrete class implements this, the concrete class must implement
+  // the [[run]] method which would take the context [[ctx]] and run that
+  // against the function [[f]] which would return a fresh context
+  //
+  trait TerminationRunner {
+
+    /**
+      * When a concrete class implements this, it would take the context
+      * [[ctx]] and run that against the function [[f]] which would return a
+      * fresh context
+      * @param ctx the incoming context
+      * @param f the function to process the result
+      * @return the ctx where the result is injected
+      */
+    def run(ctx: DataflowTerminationContext)(f: String ⇒ String) : DataflowTerminationContext
   }
 
   trait ExecRunner {

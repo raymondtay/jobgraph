@@ -7,7 +7,7 @@ import org.specs2._
 import org.scalacheck._
 import com.typesafe.config._
 import Arbitrary._
-import Gen.{containerOfN, choose, pick, mapOf, listOf, listOfN, oneOf}
+import Gen._
 import Prop.{forAll, throws, AnyOperators}
 
 //
@@ -20,12 +20,18 @@ object EngineStateOpsData {
 
   def genEmptyWFA : Gen[WFA] = oneOf(emptyActiveWF :: Nil)
 
+  def genDataflows = for {
+    googleDataflowId ← uuid
+    workflowId       ← uuid
+  } yield (googleDataflowId.toString, workflowId)
+
   def emptyLookup : scala.collection.mutable.Map[ActorPath, WorkflowId] = scala.collection.mutable.Map.empty[ActorPath, WorkflowId]
 
   def genEmptyLookup : Gen[Map[ActorPath, WorkflowId]] = oneOf(emptyLookup :: Nil)
 
   implicit def arbEmptyWfStorageGenerator = Arbitrary(genEmptyWFA)
   implicit def arbEmptyLookupGenerator    = Arbitrary(genEmptyLookup)
+  implicit def arbEmptyDataflows          = Arbitrary(nonEmptyMap(genDataflows))
 }
 
 
@@ -233,6 +239,65 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
       lookupActive(workflowId2)(job2.id).runA(workflows2).value == Some((ActorRef.noSender, job2))
       workflows2.find(_._1 equals workflowId3).fold(false)(pair ⇒ pair._2.size == 1) // this should always return 'true'
       workflows2.contains(workflowId3) == true
+    }
+  }
+
+  {
+    import EngineStateOpsData.arbEmptyDataflows
+    property("Binding google dataflow ids to state should be successful.") = forAll{ (dataflows: Map[GoogleDataflowId, WorkflowId]) ⇒
+      import cats._, data._, implicits._
+
+      val dataflowId1 = "DUMMY_DATAFLOW_ID1"
+      val dataflowId2 = "DUMMY_DATAFLOW_ID2"
+      val dataflowId3 = "DUMMY_DATAFLOW_ID3"
+      val workflowId1 = java.util.UUID.randomUUID
+
+      var t = scala.collection.mutable.Map.empty[GoogleDataflowId, WorkflowId]
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId1).runS(dataflows).value
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId2).runS(t).value
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId3).runS(t).value
+
+      t.collect{ case (k,v) if v equals workflowId1 ⇒ k }.toList.size == 3
+    }
+  }
+
+  {
+    import EngineStateOpsData.arbEmptyDataflows
+    property("Binding google dataflow ids to state; subsequent lookups should be consistent.") = forAll{ (dataflows: Map[GoogleDataflowId, WorkflowId]) ⇒
+      import cats._, data._, implicits._
+
+      val dataflowId1 = "DUMMY_DATAFLOW_ID1"
+      val dataflowId2 = "DUMMY_DATAFLOW_ID2"
+      val dataflowId3 = "DUMMY_DATAFLOW_ID3"
+      val workflowId1 = java.util.UUID.randomUUID
+
+      var t = scala.collection.mutable.Map.empty[GoogleDataflowId, WorkflowId]
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId1).runS(dataflows).value
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId2).runS(t).value
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId3).runS(t).value
+
+      lookupDataflowBindings(workflowId1).runA(t).value.size == 3
+    }
+  }
+
+  {
+    import EngineStateOpsData.arbEmptyDataflows
+    property("Binding google dataflow ids to state; subsequent lookups (given removals took place) should be consistent.") = forAll{ (dataflows: Map[GoogleDataflowId, WorkflowId]) ⇒
+      import cats._, data._, implicits._
+
+      val dataflowId1 = "DUMMY_DATAFLOW_ID1"
+      val dataflowId2 = "DUMMY_DATAFLOW_ID2"
+      val dataflowId3 = "DUMMY_DATAFLOW_ID3"
+      val workflowId1 = java.util.UUID.randomUUID
+
+      var t = scala.collection.mutable.Map.empty[GoogleDataflowId, WorkflowId]
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId1).runS(dataflows).value
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId2).runS(t).value
+      t = bindDataflowToWorkflow(workflowId1)(dataflowId3).runS(t).value
+
+      lookupDataflowBindings(workflowId1).runA(t).value.size == 3
+      t = removeFromDataflowBindings(workflowId1).runS(t).value
+      t.size == dataflows.size
     }
   }
 

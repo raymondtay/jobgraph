@@ -16,10 +16,19 @@ import akka.stream.ActorMaterializer
  *
  * Supported APIs:
  *
- * /flow/<job-id>/job - this is used by the executing jobs to submit the Google Dataflow issued job-id
+ * /flow/<jobgraph-workflow-id>/job/<jobgraph-job-id> HTTP POST
+ *
+ *                      - this is used by the executing jobs to submit the Google Dataflow issued job-id
  *                      back to the engine. The payload accompanying that
- *                      request is a JSON structure
+ *                      request is a JSON structure; non-compliance of the
+ *                      payload structure means that nothing gets processed.
  *                      { "google_dataflow_id": "2018 blah blah blah" }
+ *
+ * /flow/<jobgraph-workflow-id>/cancel HTTP POST
+ *
+ *                      - this is to cancel the Google Dataflow issued job-id
+ *                      or job-ids. If there is no json payload, it means to cancel the
+ *                      current running workflow, if any.
  *
  * @author Raymond Tay
  * @version 1.0
@@ -50,6 +59,10 @@ trait JobCallbacks {
   private[engine]
   def validateAsUUIDs : String ⇒ String ⇒ Either[Throwable, (UUID,UUID)] =
     (s: String) ⇒ (t: String) ⇒ scala.util.Try{ (UUID.fromString(s), UUID.fromString(t)) }.toEither
+
+  private[engine]
+  def validateAsUUID : String ⇒ Either[Throwable, UUID] =
+    (s: String) ⇒ scala.util.Try{ UUID.fromString(s) }.toEither
 
   /**
    * Interpret the parsed results and inform the [[engine]] to start the
@@ -82,6 +95,22 @@ trait JobCallbacks {
   }
 
   /**
+   * Interpret the parsed results and inform the [[engine]] to cancel the
+   * run of the Dataflow jobs. In either case, we would return the appropriate HTTP response
+   * @param parsed result, see [[validateAsUUIDs]]
+   */
+  private[engine]
+  def tellEngineToCancel =
+    (parsedResult: Either[Throwable, UUID]) ⇒
+      parsedResult.fold(
+        failWith(_),
+        {
+          case (wfId: UUID) ⇒
+            engine ! StopWorkflow(wfId)
+            complete(s"OK. Engine will stop Dataflow for workflow-id: $wfId")
+        })
+
+  /**
    * The routing DSL will be embedded into the Engine when it starts up. 
    * See [[Engine]] for its usage.
    */
@@ -94,6 +123,11 @@ trait JobCallbacks {
             case scala.util.Success(data)  ⇒ (tellEngineToSupervise(parse(data.utf8String).toOption) compose validateAsUUIDs(a))(b)
           }(req)
         }
+      }
+    } ~
+    post {
+      path("flow" / Segment / "cancel"){ a ⇒
+        (tellEngineToCancel compose validateAsUUID)(a)
       }
     }
 

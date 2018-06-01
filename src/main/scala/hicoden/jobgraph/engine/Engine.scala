@@ -2,6 +2,7 @@ package hicoden.jobgraph.engine
 
 import hicoden.jobgraph._
 import akka.actor._
+import akka.routing.{ ActorRefRoutee, RoundRobinRoutingLogic, Router }
 import akka.stream.ActorMaterializer
 import akka.http.scaladsl.Http
 import scala.language.{higherKinds, postfixOps}
@@ -52,10 +53,20 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
   //     are talking about peer-peer actor clusters. Coming up soon !
   //
   private[this] var activeWorkflows   = collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]]
+  private[this] var activeDataflows   = collection.mutable.Map.empty[GoogleDataflowId, WorkflowId]
   private[this] var workersToWfLookup = collection.mutable.Map.empty[ActorPath, WorkflowId]
   private[this] var failedWorkflows   = collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]]
   private[this] var jdt : JobDescriptorTable = collection.immutable.HashMap.empty[Int, JobConfig]
   private[this] var wfdt : WorkflowDescriptorTable  = collection.immutable.HashMap.empty[Int, WorkflowConfig]
+  private[this]
+  var prohibiters = {
+    val routees = Vector.fill(8) {
+      val r = context.actorOf(Props[DataflowJobTerminator])
+      context watch r
+      ActorRefRoutee(r)
+    }
+    Router(RoundRobinRoutingLogic(), routees)
+  }
 
   override def preStart() = {
     val (_jdt, _wfdt) = prepareDescriptorTables(jobNamespaces, workflowNamespaces)
@@ -129,7 +140,9 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
       )
 
     // Lookup in the active workflows info and try to find the [[wfId]] and
-    // [[jobId]] and if found, we trigger the monitoring to happen.
+    // [[jobId]] and if found, we trigger the monitoring to happen. As a
+    // side-effect, we create the mapping wfId -> google-dataflow-id
+    //
     case SuperviseJob(wfId, jobId, googleDataflowId) ⇒
       logger.info(s"[Engine][SuperviseJob] Received $wfId $jobId $googleDataflowId")
       activeWorkflows.contains(wfId) match {
@@ -137,13 +150,12 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
           lookupActive(wfId)(jobId).runA(activeWorkflows).value.fold(logger.warn(s"Did not locate the job: $jobId")){
             (p: (ActorRef, Job)) ⇒
               p._1 ! MonitorRun(wfId, jobId, self, googleDataflowId)
+              activeDataflows = bindDataflowToWorkflow(wfId)(googleDataflowId).runS(activeDataflows).value
               logger.info(s"[Engine][SuperviseJob] Engine will start supervising Google dataflow job: $googleDataflowId")
           }
         case false ⇒ logger.error(s"Did not see either workflow:$wfId , job:$jobId")
       }
 
-      // lookup the actor taking care of the jobId
-      // job ! MonitorRun(googleDataflowIdjobId)
 
     // De-activation means that we update the state of the workflow to
     // 'forced_termination' and the workers will be shutdown.
@@ -153,9 +165,11 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
         for {
           ns  ← EitherT(stopWorkflow(wfId))
           wfs ← EitherT(deactivateWorkers(wfId)(activeWorkflows))
+          dfs ← EitherT(cancelGoogleDataflowJobs(wfId)(activeDataflows))
         } yield {
           logger.info("[Engine][StopWorkflow] {} nodes were updated for workflow id:{} and should be stopped.", ns, wfId)
           activeWorkflows = wfs
+          activeDataflows = dfs
         }
       },
         logger.error("[Engine][StopWorkflow] Attempting to stop a workflow id:{} that does not exist!", wfId)
@@ -234,7 +248,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     * issue the [[StopRun]] command
     * @param wfId - workflow id
     * @param xs - state data
-    * @return a Left which indicates a error condition or a Right which indicates success.
+    * @return a Left which indicates a error condition or a Right which indicates success and state is returned.
     */
   def deactivateWorkers(wfId: WorkflowId) : Reader[WFA, Either[String, WFA]] = Reader { (workflows: WFA) ⇒
     Either.cond(
@@ -246,6 +260,25 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
       s"[DeactivateWorkers] Did not discover workflow $wfId in the internal state."
     )
   }
+
+  /**
+    * Attempts to cancel the google dataflow jobs by issuing a call to Google.
+    * @param wfId - workflow id
+    * @param xs - state data
+    * @return a Left which indicates a error condition or a Right which indicates success and state is returned.
+    */
+  def cancelGoogleDataflowJobs(wfId: WorkflowId) : Reader[Map[GoogleDataflowId, WorkflowId], Either[String, Map[GoogleDataflowId, WorkflowId]]] =
+    Reader { (dataflows: Map[GoogleDataflowId, WorkflowId]) ⇒
+      val gJobs = lookupDataflowBindings(wfId).runA(dataflows).value
+      Either.cond(
+        !gJobs.isEmpty,
+        {
+          prohibiters.route(WhatToStop(gJobs), sender())
+          removeFromDataflowBindings(wfId).runA(dataflows).value
+        },
+        s"[cancelGoogleDataflowJobs] Did not discover workflow $wfId in the internal state."
+      )
+    }
 
   /**
     * Basically creates the Actor and associates its to the job; take note that

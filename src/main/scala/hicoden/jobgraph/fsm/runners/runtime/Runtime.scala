@@ -87,7 +87,7 @@ trait GoogleDataflowJobResultFunctions {
   import cats._, data._, implicits._
   import io.circe._
   import io.circe.optics.JsonPath._
-  import hicoden.jobgraph.fsm.runners.MonitorContext
+  import hicoden.jobgraph.fsm.runners.{DataflowTerminationContext, MonitorContext}
   import GoogleDataflowJobStatuses._
 
   def getId : Reader[Json, Option[String]] = Reader{ (j:Json) ⇒ root.id.string.getOption(j) }
@@ -108,14 +108,35 @@ trait GoogleDataflowJobResultFunctions {
   def interpretJobResult : Reader[MonitorContext[Json], Option[(String,String,GoogleDataflowJobStatuses.GoogleDataflowJobStatus,String)]]= Reader{ (ctx: MonitorContext[Json]) ⇒
     ctx.returns == null match {
       case true  ⇒ none
-      case false ⇒ 
+      case false ⇒
         (getId(ctx.returns), getCreateTime(ctx.returns), getCurrentState(ctx.returns), getCurrentStateTime(ctx.returns)).mapN(
           (a,b,c,d) ⇒
             (a, b, c, d).mapN(
               (id, createTime, currentState, currentStateTime) ⇒ (id, createTime, currentState, currentStateTime))
             )
-    } 
+    }
   }
+
+  /**
+    * Interprets the result and we are expecting a string of messages by the
+    * GCloud SDK. Be aware that Google might change the messages and even the
+    * format of the message.
+    *
+    * Example of a successful "cancel" is :
+    *   "Cancelled job [Xxxxx...]"
+    * Example of a unsuccessful "cancel" is:
+    *   "Failed to cancel job [Xxxx...]"
+    *
+    * @param ctx
+    * @return Some(result messages) or none
+    */
+  def interpretCancelJobResult : Reader[DataflowTerminationContext, Option[List[String]]] = Reader{ (ctx: DataflowTerminationContext) ⇒
+    ctx.returns.isEmpty match {
+      case true  ⇒ none
+      case false ⇒ ctx.returns.some
+    }
+  }
+
 }
 
 object GoogleDataflowFunctions extends GoogleDataflowJobResultFunctions
