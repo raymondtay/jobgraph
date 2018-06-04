@@ -13,9 +13,12 @@ package object runtime {
   import hicoden.jobgraph.{JobId, WorkflowId}
   import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig}
 
+  // Represents the location of this "JobEngine"
+  case class LocationContext(hostname : String, port: Int)
+
   // This is pretty much the runtime representation of the job's configuration
   // in [[JobConfig]].
-  case class JobContext(name: String, description: String, workdir: String, sessionid: String, runner: Runner)
+  case class JobContext(name: String, description: String, workdir: String, workflowId: WorkflowId, jobId: JobId, location: LocationContext, runner: Runner)
 
   // [[JobContextManifest]] is the typeclass where all functions related to
   // transforming [[JobConfig]] to [[JobContext]]es so that the runner can use
@@ -25,13 +28,9 @@ package object runtime {
     def manifest(wfId: WorkflowId, jobId: JobId) =
       (cfg: JobConfig)⇒
         JobContext(name = cfg.name, description = cfg.description,
-                   workdir = cfg.workdir, sessionid = cfg.sessionid,
-                   runner = injectCallback(wfId, jobId)(cfg.runner))
-
-    private
-    def injectCallback(wfId: WorkflowId, jobId: JobId) = Reader{ (runner: Runner) ⇒
-      runner.copy(cliargs = runner.cliargs :+ s"--callback http://0.0.0.0:9000/flow/$wfId/jobId/$jobId")
-    }
+                   workdir = cfg.workdir, workflowId = wfId,
+                   jobId = jobId, location = LocationContext("0.0.0.0", 9000),
+                   runner = cfg.runner)
   }
 
   object JobContextManifest extends JobContextManifest

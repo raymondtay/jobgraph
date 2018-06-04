@@ -37,9 +37,9 @@ class DataflowRunner extends ExecRunner {
     import Functions._
     val runtimeContext = f(ctx.jobConfig)
 
-    val result : Either[Throwable,Stream[String]] = scala.util.Try{
+    val result : Either[Throwable,scala.sys.process.Process] = scala.util.Try{
       val (command, cwd, env) = buildCommand(runtimeContext)
-      Process(command, new java.io.File(cwd), env.toSeq:_*).lineStream
+      Process(command, new java.io.File(cwd), env.toSeq:_*).run()
     }.toEither
     result.fold(onError(runtimeContext), onSuccess(runtimeContext))  
   }
@@ -51,9 +51,8 @@ class DataflowRunner extends ExecRunner {
     ctx
   }
 
-  def onSuccess(ctx: runtime.JobContext) = (data: Stream[String]) ⇒ {
+  def onSuccess(ctx: runtime.JobContext) = (proc: scala.sys.process.Process) ⇒ {
     logger.info("About to parse the return data and validate it.")
-    logger.debug(s"Incoming data: ${data.toList}")
     ctx
   }
 
