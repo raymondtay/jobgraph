@@ -24,7 +24,7 @@ class DataflowJobTerminator extends Actor with ActorLogging {
           googleDataflowJobs) /* this produces a nice string which will be consumed by the program , this is mandatory */
 
       val runner = new DataflowJobTerminationRunner
-      GoogleDataflowFunctions.interpretCancelJobResult(runner.run(ctx)(id ⇒ id))
+      sender ! GoogleDataflowFunctions.interpretCancelJobResult(runner.run(ctx)(id ⇒ id))
 
   }
 

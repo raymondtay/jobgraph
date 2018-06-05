@@ -88,8 +88,6 @@ class JobFSM extends LoggingFSM[State, Data] {
     case Idle -> Active ⇒
       log.info("entering 'Active' from 'Idle'")
       setTimer("Start Job", Go, timeout = 1 second)
-    case Active -> Idle ⇒
-      log.info("entering 'Idle' from 'Active'")
     case Active -> Active ⇒
       log.info("You called Sire?")
   }

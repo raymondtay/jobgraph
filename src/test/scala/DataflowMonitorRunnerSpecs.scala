@@ -23,7 +23,7 @@ class DataflowMonitorRunnerSpecs extends Specification with ScalaCheck {
     import hicoden.jobgraph.fsm._, runners._
     val fakeJobId = "TEST12334341241351241241243213213123213123"
     val ctx =
-      MonitorContext(getClass.getClassLoader.getResource("gcloud_monitor_job.sh").getPath.toString :: Nil, fakeJobId, "")
+      MonitorContext(getClass.getClassLoader.getResource("gcloud_monitor_job4.sh").getPath.toString :: Nil, fakeJobId, "")
     val runner = new DataflowMonitorRunner
     val result = runner.run(ctx)((x: String) ⇒ x.trim)
     result.returns must beEqualTo(fakeJobId)
