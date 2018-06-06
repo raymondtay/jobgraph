@@ -39,7 +39,8 @@ class DataflowRunner extends ExecRunner {
 
     val result : Either[Throwable,scala.sys.process.Process] = scala.util.Try{
       val (command, cwd, env) = buildCommand(runtimeContext)
-      Process(command, new java.io.File(cwd), env.toSeq:_*).run()
+      if (cwd.isEmpty) Process(command, None, env.toSeq:_*).run()
+      else Process(command, Some(new java.io.File(cwd)), env.toSeq:_*).run()
     }.toEither
     result.fold(onError(runtimeContext), onSuccess(runtimeContext))  
   }

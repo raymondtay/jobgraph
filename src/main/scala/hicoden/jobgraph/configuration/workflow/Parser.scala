@@ -7,6 +7,7 @@ trait HOCONWorkflowValidation {
   def errorMessage(namespace: String) = s"Unable to load workflow configuration from namespace: $namespace"
 }
 
+case object NamespaceNotFound extends HOCONWorkflowValidation { val namespace : String = "no namespaces provided." }
 object LoadWorkflowFailure extends HOCONWorkflowValidation
 
 /**
@@ -34,7 +35,9 @@ trait Parser {
     */
   def loadDefault : Reader[List[String], LoadingResult[List[WorkflowConfig]]] =
     Reader{ (namespaces: List[String]) ⇒
-      namespaces.map(namespace ⇒ loadDefaultByNamespace(namespace)).reduce(_ |+| _)
+      if (!namespaces.isEmpty)
+        namespaces.map(namespace ⇒ loadDefaultByNamespace(namespace)).reduce(_ |+| _)
+      else NamespaceNotFound.invalidNel[List[WorkflowConfig]]
     }
 
   /**

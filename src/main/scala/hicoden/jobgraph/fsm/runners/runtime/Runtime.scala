@@ -14,17 +14,17 @@ object Functions {
   // This function would throw a [[UnsupportedOperationException]] and its
   // intentional because of the fact that it should not have happened.
   //
-  def buildCommand = Reader{ (cfg: JobContext) ⇒
+  def buildCommand : Reader[JobContext, (String,String,Map[String,String])] = Reader{ (cfg: JobContext) ⇒
     if (isPythonModule(cfg)) buildPythonCommand(cfg) else
     if (isJavaModule(cfg)) buildJavaCommand(cfg) else throw new UnsupportedOperationException(s"Jobgraph only supports the following exception types : ${ExecType.values.mkString(",")}")
   }
 
-  def buildPythonCommand = Reader{ (cfg: JobContext) ⇒
+  def buildPythonCommand : Reader[JobContext, (String,String,Map[String,String])] = Reader{ (cfg: JobContext) ⇒
     (s"python -m ${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback http://${cfg.location.hostname}:${cfg.location.port}/flow/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("PYTHONPATH" -> cfg.workdir))
   }
 
-  def buildJavaCommand = Reader{ (cfg: JobContext) ⇒
-    (s"${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback=http://${cfg.location.hostname}:${cfg.location.port}/flow/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map())
+  def buildJavaCommand : Reader[JobContext, (String,String,Map[String,String])] = Reader{ (cfg: JobContext) ⇒
+    (s"${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback=http://${cfg.location.hostname}:${cfg.location.port}/flow/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("CLASSPATH" -> cfg.workdir))
   }
 
 }

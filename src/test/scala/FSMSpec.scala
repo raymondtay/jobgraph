@@ -32,7 +32,7 @@ implicit def system(actorSystemName: String) =
 
 class EngineDummy extends Actor with ActorLogging {
   def receive = {
-    case msg ⇒ sender ! msg
+    case msg ⇒
   }
 }
 
@@ -77,7 +77,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
     fsm.stateName == Idle
     fsm.isTimerActive("Start Job") == false
     within(3 seconds) { // Idle state is expecting to timed out after 2 seconds but we are not going to hit that since we are firing 'StopRun'
-      EventFilter.info(source = "akka://JobFSMSpecs/users/the-fsm-2", message = "Stopping run").intercept {
+      EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-2", message = "Stopping run", occurrences = 1).intercept {
         fsm ! StopRun
       }
     }
@@ -115,7 +115,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
     fsm.isTimerActive("Start Job") == true
  
     within(3 seconds) { // Idle state is expecting to timed out after 2 seconds but we are not going to hit that since we are firing 'StopRun'
-      EventFilter.info(source = "akka://JobFSMSpecs/users/the-fsm-3", message = "Stopping run").intercept {
+      EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-3", message = "Stopping run", occurrences = 1).intercept {
         fsm ! StopRun
       }
     }
@@ -134,7 +134,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
     fsm.isTimerActive("Start Job") == false
  
     within(2 seconds) {
-      EventFilter.info(source = "akka://JobFSMSpecs/users/the-fsm-4", pattern = "About to start").intercept {
+      EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-4", pattern = "About to start", occurrences = 1).intercept {
         fsm ! StartRun(wfId, job, engine)
         fsm.stateName == Active
         fsm.isTimerActive("Start Job") == true
@@ -159,24 +159,23 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
     fsm.stateName == Idle
     fsm.isTimerActive("Start Job") == false
  
-    within(2 seconds) {
-      EventFilter.info(source = "akka://JobFSMSpecs/users/the-fsm-5", pattern = "About to start").intercept {
+    within(8 seconds) {
+      EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-5", pattern = "About to start", occurrences = 1).intercept {
         fsm ! StartRun(wfId, job, engine)
         fsm.stateName == Active
         fsm.isTimerActive("Start Job") == true
+        fsm ! Go
+        fsm ! MonitorRun(wfId, job.id, engine, googleDataflowId)
       }
     }
 
-    EventFilter.error(source = "akka://JobFSMSpecs/users/the-fsm-5", pattern = "[FSM] could not parse the response from Google").intercept {
-      fsm ! MonitorRun(wfId, job.id, engine, googleDataflowId)
-    }
     probe.expectTerminated(fsm)
   }
 
   "JobFSM when in 'Active' state, would proceed its run after waiting for a short period (e.g. 1 second); begin its automatic monitoring run when activated." in {
     import scala.concurrent.duration._
     val fsm = TestFSMRef(new JobFSM, "the-fsm-6") // the actual JobFSM actor
-    val engine = TestActorRef(new EngineDummy) // the fake Engine actor
+    val engine = TestActorRef(new EngineDummy, "engine-6") // the fake Engine actor
     val probe = TestProbe("JobFSMSpecs")
     probe.watch(fsm) // watch the [[JobFSM]] actor so that we can catch its end-of-life.
 
@@ -184,7 +183,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
     val jobConfig =
       JobConfig(id = 42, name = "job-config-1", description = "",
         workdir = "", sessionid = "",
-        runner = Runner("test", getClass.getClassLoader.getResource("fake_start_dataflow_job.sh").getPath.toString,
+        runner = Runner(runner = "Dataflow:java", module = getClass.getClassLoader.getResource("fake_start_dataflow_job.sh").getPath.toString,
         cliargs = Nil), inputs = Nil, outputs = Nil)
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
@@ -195,16 +194,16 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
     fsm.stateName == Idle
     fsm.isTimerActive("Start Job") == false
  
-    within(2 seconds) {
-      EventFilter.info(source = "akka://JobFSMSpecs/users/the-fsm-6", pattern = "About to start").intercept {
+    within(8 seconds) {
+      EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-6", pattern = "About to start", occurrences = 1).intercept {
         fsm ! StartRun(wfId, job, engine)
         fsm.stateName == Active
         fsm.stateData == Processing(wfId, job, engine)
         fsm.isTimerActive("Start Job") == true
+        Thread.sleep(3000)
         fsm ! MonitorRun(wfId, job.id, engine, googleDataflowId)
       }
     }
-
 
     probe.expectTerminated(fsm)
   }

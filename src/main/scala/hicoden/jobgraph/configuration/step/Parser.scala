@@ -9,6 +9,7 @@ trait HOCONValidation {
   def errorMessage = s"Unable to load configuration from namespace: $namespace"
 }
 
+case object NamespaceNotFound extends HOCONValidation { val namespace : String = "no namespaces provided." }
 case class LoadFailure(namespace: String) extends HOCONValidation
 case class RunnerTypeFailure(namespace: String) extends HOCONValidation {
   override
@@ -45,7 +46,10 @@ trait Parser {
     */
   def loadDefault : Reader[List[String], LoadingResult[List[JobConfig]]] =
     Reader{ (namespaces: List[String]) ⇒
-      namespaces.map(namespace ⇒ loadDefaultByNamespace(namespace)).reduce(_ |+| _)
+      if (!namespaces.isEmpty)
+        namespaces.map(namespace ⇒ loadDefaultByNamespace(namespace)).reduce(_ |+| _)
+      else NamespaceNotFound.invalidNel[List[JobConfig]]
+         
     }
 
   /**

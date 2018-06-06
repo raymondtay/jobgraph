@@ -72,7 +72,7 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
 //
 class Echo extends akka.actor.Actor {
   def receive = {
-    case msg ⇒ sender ! msg
+    case msg ⇒
   }
 }
 
