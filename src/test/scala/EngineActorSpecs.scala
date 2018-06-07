@@ -56,6 +56,14 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
 
     }
 
+    "not proceed to execute if the workflow id is found but there's a loop; when jobs nor workflows are loaded." in {
+      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-5")
+      val existentId = 20
+      engine ! StartWorkflow(existentId)
+      Thread.sleep(2000)
+      expectMsgType[String]
+    }
+
   }
 
 }

@@ -241,7 +241,7 @@ object GraphDataScenarioD {
   
   import WorkflowOps._
 
-  def graphGen : Workflow = createWf(Seq(shirt, tie, jacket, belt, pants, undershorts, socks, shoes, watch))(Seq(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10))
+  def graphGen : Workflow = createWf(Seq(shirt, tie, jacket, belt, pants, undershorts, socks, shoes, watch))(Seq(e1, e2, e3, e4, e5, e6, e7, e8, e9))
 
   def workflowGen : Gen[Workflow] = for {
     workflow ← oneOf(graphGen :: Nil)

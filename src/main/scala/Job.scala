@@ -90,9 +90,14 @@ trait WorkflowOps extends WorkflowImplicits {
     */
   def startWorkflow : Reader[WorkflowId, Option[Set[Job]]] = Reader { (wfId: WorkflowId) ⇒
     work.find(_.id equals wfId).fold[Option[Set[Job]]](none){ workflow ⇒
-      val startNodes = workflow.jobgraph.roots.map(node ⇒ updateNodeState(JobStates.start)(node))
-      logger.info("[Workflow] Node(s) for workflow: {} have been updated to {}.", workflow.id, JobStates.start)
-      startNodes.some
+      if (workflow.jobgraph.hasLoop) {
+        logger.info("[Workflow] loops detected for workflow: {}.", workflow.id)
+        none
+      } else{
+        val startNodes = workflow.jobgraph.roots.map(node ⇒ updateNodeState(JobStates.start)(node))
+        logger.info("[Workflow] Node(s) for workflow: {} have been updated to {}.", workflow.id, JobStates.start)
+        startNodes.some
+      }
     }
   }
 

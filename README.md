@@ -1,14 +1,16 @@
 # jobgraph
-A multigraph approach to modelling workflows since a workflow is essentially a
-_job graph_.
 
-# Tutorials
+# What it does
 
-Use the `sbt tut` to generate the documentation for code examples. You would
-find the compiled code examples in the `<dir>/target/scala-2.12/tut/` directory
-where you can read and understand how to make API calls.
+This is an engine that allows you to do two things:
+- Define `job`(s) in the system and create `workflow`(s) using that and submits
+  it to a Apache Beam framework for execution
+- To do all that, you have to write jobs using Apache Beam's programming model
+- Craft a processing graph which details your execution dependency and submit
+  that to `jobgraph` and it takes care of executing the job for you.
 
-# Goals
+
+## What do i need to know about JobGraph
 
 Basic idea is to provide a mechanism that allows the user to define:
 - What a _step_ is
@@ -20,7 +22,7 @@ Basic idea is to provide a mechanism that allows the user to define:
   words, the system is designed to be asynchronous by default unless otherwise.
 - A few common operations to be provided 
 
-# Step
+## What's a Job
 
 A _step_ is essentially a computer program that will be executed, given a group
 of parameters (e.g. inputs, outputs) and executes under the context of a
@@ -35,7 +37,7 @@ A step is defined by the following (non-exhaustively):
 - Runner (describes how to get the program executed e.g. `Apache Beam`)
 - Run-As (the identity of the requester)
 
-# Workflow
+## What's a Workflow
 
 A _workflow_ is essentially a graph of computations (i.e. graph of _steps_) to
 be carried out.
@@ -47,5 +49,4 @@ A workflow is defined by the following (non-exhaustively):
 - Steps (a list of names which point to the steps currently in the system)
 - Job graph (a mechanism to describe how to execute the string of actions)
 
-When _any_ step is to be executed, the _workflow engine_ (component not yet
-built) is suppose to start the step (attempt to start).
+
