@@ -110,7 +110,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     case UpdateWorkflow(wfId, jobId, signal) ⇒
       logger.info(s"[Engine][UpdateWorkflow] Going to update wf:$wfId, job:$jobId for signal: $signal")
       updateWorkflow(wfId)(jobId)(signal).bimap(
-        (error: Throwable) ⇒ {
+        (error: Exception) ⇒ {
           logFailure.run(error) >>
           dropWorkflowFromActive(activeWorkflows, failedWorkflows)(wfId).bimap(
             (errorMessage: String) ⇒ logger.error(s"[Engine][UpdateWorkflow] Error in updating workflow with message: $errorMessage ."),
@@ -226,7 +226,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     * @param t - [[java.lang.Throwable]] object representing errors
     * @return nothing - with the side effect that logs are pumped
     */
-  def logFailure : Reader[Throwable, Unit] = Reader{(t: Throwable) ⇒
+  def logFailure : Reader[Exception, Unit] = Reader{(t: Exception) ⇒
     logger.error("[logFailure] Error encountered with details")
     logger.debug(s"[logFailure] Stack Trace: ${t.getStackTrace.map(stackElement ⇒ logger.error(stackElement.toString))}")
   }

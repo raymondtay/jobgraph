@@ -11,6 +11,11 @@ import akka.actor._
 import akka.testkit._
 import org.scalatest.{ BeforeAndAfterEach, BeforeAndAfterAll, Matchers, WordSpecLike }
 
+//
+// Note: Tracing the log messages by tailing the behind of actors can be a
+// little tricky if you are not careful. If tests borked after some upgrade, i
+// would suggest to look at those actor names as a possible source of errors.
+//
 class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with ImplicitSender
   with WordSpecLike with Matchers with BeforeAndAfterAll {
 
@@ -62,6 +67,30 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
       engine ! StartWorkflow(existentId)
       Thread.sleep(2000)
       expectMsgType[String]
+    }
+
+    "updating the workflow that ∉ of the memory of jobgraph is bound to fail with an entry in the logs." in {
+      import hicoden.jobgraph.JobStates
+      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-6")
+      val invalidWfId = java.util.UUID.randomUUID // these ids do not exist during the test since its generated runtime and we didn't capture a`prior.
+      val invalidJobId = java.util.UUID.randomUUID
+      engine ! UpdateWorkflow(invalidWfId, invalidJobId, JobStates.forced_termination)
+      expectNoMessage()
+    }
+
+    "updating the workflow that ∈ of the memory of jobgraph is bound to succeed, and sets off the next job in line." in {
+      import hicoden.jobgraph.JobStates
+      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-7")
+      val existentId = 18
+      engine ! StartWorkflow(existentId)
+
+      Thread.sleep(3000) // sleep a little so that the external process can bootup.
+
+      var runtimeWorkflowId : WorkflowId = null
+      expectMsgPF(1 second){ case msg ⇒ runtimeWorkflowId = java.util.UUID.fromString(msg.asInstanceOf[String]) }
+      EventFilter.info(source = "akka://EngineActorSpecs/user/Engine-7/$i", pattern = "Stopping run", occurrences = 1).intercept {
+        engine ! StopWorkflow(runtimeWorkflowId)
+      }
     }
 
   }

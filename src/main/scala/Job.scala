@@ -107,13 +107,13 @@ trait WorkflowOps extends WorkflowImplicits {
     * @param jobId - ID of the job or step
     * @param state - to be updated
     */
-  def updateWorkflow(wfId: WorkflowId)(node: JobId) : Reader[JobStates.States, Either[Throwable, Option[Boolean]]] = Reader{ (state: JobStates.States) ⇒
-    work.find(_.id equals wfId).fold[Either[Throwable, Option[Boolean]]](throw new Exception(s"[Workflow][Update] Did not find workflow matching id: $wfId")){ workflow ⇒
+  def updateWorkflow(wfId: WorkflowId)(node: JobId) : Reader[JobStates.States, Either[Exception, Option[Boolean]]] = Reader{ (state: JobStates.States) ⇒
+    work.find(_.id equals wfId).fold[Either[Exception, Option[Boolean]]](Left(new Exception(s"[Workflow][Update] Did not find workflow matching id: $wfId"))){ workflow ⇒
       val updatedNodes = workflow.jobgraph.nodes.filter(_.id equals node).map(updateNodeState(state)(_))
       Either.cond(
         !updatedNodes.isEmpty,
         true.some,
-        throw new Exception("[Workflow][Update] Found workflow but matching job was not discovered. Weird.")
+        new Exception("[Workflow][Update] Found workflow but matching job was not discovered. Weird.")
       )
     }
   }
