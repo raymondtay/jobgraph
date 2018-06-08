@@ -9,6 +9,11 @@ This is an engine that allows you to do two things:
 - Craft a processing graph which details your execution dependency and submit
   that to `jobgraph` and it takes care of executing the job for you.
 
+# Architecture
+## Production
+![Production Architecture](./imgs/architecture.png)
+## Sandbox
+![Sandbox Architecture](./imgs/sandbox.png)
 
 ## What do i need to know about JobGraph
 
