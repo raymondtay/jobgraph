@@ -355,7 +355,7 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
       import quiver.{empty ⇒ emptyGraph}
       val fakeWorkflow = Workflow( emptyGraph[Job, JobId, String] )
       val fakeJob = Job("fake-job")
-      WorkflowOps.updateWorkflow(fakeWorkflow.id)(fakeJob.id)(JobStates.start) must throwA[Exception]
+      WorkflowOps.updateWorkflow(fakeWorkflow.id)(fakeJob.id)(JobStates.start) must beLeft
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
 
@@ -363,7 +363,7 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
     import GraphDataScenarioB.{jobA,jobB,jobC,jobD,jobE,jobF,workflowArbGenerator}
     "Attempting to update a workflow with a job that is not associated with it will give errors can caught and returned as a Either.Left value" >> prop { (workflow: Workflow) ⇒
       val fakeJob = Job("fake-job")
-      WorkflowOps.updateWorkflow(workflow.id)(fakeJob.id)(JobStates.start) must throwA[Exception]
+      WorkflowOps.updateWorkflow(workflow.id)(fakeJob.id)(JobStates.start) must beLeft
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
 
