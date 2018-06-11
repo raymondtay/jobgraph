@@ -1,5 +1,6 @@
 package hicoden.jobgraph.engine
 
+import hicoden.jobgraph.WorkflowOps
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
 import hicoden.jobgraph.configuration.workflow.internal.Concretizer
@@ -22,6 +23,7 @@ trait EngineOps extends Concretizer {
 
   import cats._, data._, implicits._
 
+  import WorkflowOps._
   object StepOps extends StepParser with StepLoader
   object WfOps extends WfParser with WfLoader
 
@@ -58,4 +60,36 @@ trait EngineOps extends Concretizer {
     else none
   }
 
+  /**
+    * Validate the workflow submission by checking whether it is valid (i.e.
+    * all job nodes referenced must exist and there's no loop since we want
+    * DAGs)
+    * @param wfConfig
+    * @return Some(<workflow index>) else none
+    */
+  def validateWorkflowSubmission(implicit jdt: JobDescriptorTable) : Reader[WorkflowConfig, Option[WorkflowConfig]] =
+    Reader{ (wfConfig: WorkflowConfig) ⇒
+      reify(jdt)(wfConfig).fold(
+        errors ⇒ none,
+        (fb: (List[quiver.LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒ wfConfig.some
+      )
+    }
+
+  /**
+    * State function that adds the workflow configuration to the workflow
+    * descriptor table and returns this updated version.
+    * @param wfConfig
+    * @param wfdt
+    * @return updated Workflow Descriptor Table
+    */
+  def addNewWorkflow = Reader{ (wfConfig: WorkflowConfig) ⇒
+    for {
+      s  ← State.get[WorkflowDescriptorTable]
+      _  ← State.modify{(dt: WorkflowDescriptorTable) ⇒
+             WfOps.hydrateWorkflowConfigs(wfConfig :: Nil).runS(dt).value
+           }
+      s2 ← State.get[WorkflowDescriptorTable]
+    } yie← s2
+  }
 }
+

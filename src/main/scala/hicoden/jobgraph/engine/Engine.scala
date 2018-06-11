@@ -35,6 +35,7 @@ case class StartWorkflow(workflowId: Int)
 case class StopWorkflow(wfId: WorkflowId)
 case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStates.States)
 case class SuperviseJob(wfId: WorkflowId, jobId: JobId, googleDataflowId: String)
+case class ValidateWorkflowSubmission(wfConfig : WorkflowConfig)
 
 //
 // Engine should perform the following:
@@ -174,6 +175,20 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
       },
         logger.error("[Engine][StopWorkflow] Attempting to stop a workflow id:{} that does not exist!", wfId)
       )
+
+    case ValidateWorkflowSubmission(cfg) ⇒ 
+      validateWorkflowSubmission(jdt)(cfg).fold{
+        logger.error(s"[Engine][Internal] Unable to validate the workflow submission : ${cfg}")
+        sender() ! none
+        }{
+        (workflowConfig: WorkflowConfig) ⇒
+          val current = wfdt.size
+          wfdt = addNewWorkflow(workflowConfig).runS(wfdt).value
+          val newSize = wfdt.size
+          logger.info(s"[Engine] workflow has been added to repository: $current -> $newSize")
+          logger.debug(s"[Engine][Internal] workflow descriptors tables has been updated.")
+          sender() ! Some(cfg.id)
+      }
 
     case Terminated(child) ⇒
       val (xs, result) = removeFromLookup(child).run(workersToWfLookup).value
@@ -317,8 +332,9 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
 
 }
 
-object Engine extends App with JobCallbacks {
+object Engine extends App with JobCallbacks with WorkflowWebServices {
   import akka.pattern.ask
+  import akka.http.scaladsl.server.Directives._
   import scala.concurrent._, duration._
 
   /**
@@ -344,7 +360,7 @@ object Engine extends App with JobCallbacks {
   val workflowId : WorkflowId = java.util.UUID.fromString(Await.result((engine ? StartWorkflow(0)).mapTo[String], timeout.duration))
 
   // Bind the engine to serve ReST
-  val bindingFuture = Http().bindAndHandle(route, "0.0.0.0")
+  val bindingFuture = Http().bindAndHandle(JobCallbackRoutes ~ WorkflowWebServicesRoutes , "0.0.0.0")
   println(s"Server online at http://0.0.0.0:9000/\nPress RETURN to stop...")
   scala.io.StdIn.readLine() // let it run until user presses return
   bindingFuture

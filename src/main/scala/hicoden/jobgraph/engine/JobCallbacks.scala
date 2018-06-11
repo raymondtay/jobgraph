@@ -114,7 +114,7 @@ trait JobCallbacks {
    * The routing DSL will be embedded into the Engine when it starts up. 
    * See [[Engine]] for its usage.
    */
-  val route : Route = 
+  val JobCallbackRoutes : Route = 
     post {
       path("flow" / Segment / "job" / Segment){ (a, b) ⇒
         decodeRequest { (req:RequestContext) ⇒
