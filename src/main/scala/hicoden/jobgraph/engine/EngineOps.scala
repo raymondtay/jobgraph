@@ -89,7 +89,7 @@ trait EngineOps extends Concretizer {
              WfOps.hydrateWorkflowConfigs(wfConfig :: Nil).runS(dt).value
            }
       s2 ← State.get[WorkflowDescriptorTable]
-    } yie← s2
+    } yield s2
   }
 }
 
