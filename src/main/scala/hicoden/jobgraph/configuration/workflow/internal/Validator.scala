@@ -34,6 +34,8 @@ trait Concretizer {
     * @return A [[Either.Left]] value whose payload indicates some parsing error or a
     *         [[Either.Right]] where the payload is the 3-tuple (t,u,v) where t =
     *         source node, u = destination node and v = edge between t and u.
+    *         Take note that if any job vertices referenced is not registered
+    *         in the system, empty containers are returned.
     */
   def reify(jobDescriptorTable: JobDescriptorTable) : Reader[WorkflowConfig, Either[List[fastparse.core.Parsed[Forward,Char,String]], (List[LNode[Job,JobId]], List[LEdge[Job,String]])]] =
     Reader{ (workflow: WorkflowConfig) ⇒

@@ -52,7 +52,7 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
   }
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces
-  val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::Nil, Nil))
+  val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))
 
   "When submitting a ReST call to the Engine to create a workflow" should {
     import WorkflowDummyData._
@@ -79,6 +79,54 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
       import io.circe.generic.auto._, io.circe.syntax._
       val data = validWorkflowConfig.sample.get
       Post(s"/flow/create", HttpEntity(`application/json`, data.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual UnprocessableEntity
+        mediaType shouldEqual `application/json`
+        responseAs[io.circe.Json] shouldEqual parse(s"""{"errors": ["JSON payload detected but invalid format."]}""").getOrElse(Json.Null)
+      }
+    }
+
+    "return a HTTP-420 code when json payload is detected (workflow config is valid format) but Engine rejected it because there's a loop" in {
+      import io.circe.generic.auto._, io.circe.syntax._
+      val wfConfig =
+        WorkflowConfig(id = 42,
+                       name = "Test workflow name",
+                       description = "Yeah, its a test",
+                       steps = List(0, 1, 2),
+                       jobgraph = List("0 -> 1", "1 -> 1")) // note: jobgraph contains a loop
+
+      Post(s"/flow/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual UnprocessableEntity
+        mediaType shouldEqual `application/json`
+        responseAs[io.circe.Json] shouldEqual parse(s"""{"errors": ["JSON payload detected but invalid format."]}""").getOrElse(Json.Null)
+      }
+    }
+
+    "return a HTTP-420 code when json payload is detected (workflow config is valid format) but Engine rejected it because there's no valid jobgraph" in {
+      import io.circe.generic.auto._, io.circe.syntax._
+      val wfConfig =
+        WorkflowConfig(id = 42,
+                       name = "Test workflow name",
+                       description = "Yeah, its a test",
+                       steps = List(0, 1, 2),
+                       jobgraph = List("99 -> 98", "98 -> 99")) // note: jobgraph contains references to non-existent job descriptors
+
+      Post(s"/flow/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual UnprocessableEntity
+        mediaType shouldEqual `application/json`
+        responseAs[io.circe.Json] shouldEqual parse(s"""{"errors": ["JSON payload detected but invalid format."]}""").getOrElse(Json.Null)
+      }
+    }
+
+    "return a HTTP-420 code when json payload is detected (workflow config is valid format) but Engine rejected it because there's an already existing workflow in the system" in {
+      import io.circe.generic.auto._, io.circe.syntax._
+      val wfConfig =
+        WorkflowConfig(id = 1,
+                       name = "Test workflow name",
+                       description = "Yeah, its a test",
+                       steps = List(0, 1, 2),
+                       jobgraph = List("99 -> 98", "98 -> 99")) // note: jobgraph contains references to non-existent job descriptors
+
+      Post(s"/flow/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
         status shouldEqual UnprocessableEntity
         mediaType shouldEqual `application/json`
         responseAs[io.circe.Json] shouldEqual parse(s"""{"errors": ["JSON payload detected but invalid format."]}""").getOrElse(Json.Null)

@@ -67,12 +67,31 @@ trait EngineOps extends Concretizer {
     * @param wfConfig
     * @return Some(<workflow index>) else none
     */
-  def validateWorkflowSubmission(implicit jdt: JobDescriptorTable) : Reader[WorkflowConfig, Option[WorkflowConfig]] =
+  def validateWorkflowSubmission(implicit jdt: JobDescriptorTable, wfdt: WorkflowDescriptorTable) : Reader[WorkflowConfig, Option[WorkflowConfig]] =
     Reader{ (wfConfig: WorkflowConfig) ⇒
+      if (isWorkflowIndexExisting(wfdt)(wfConfig)) none
+      else
       reify(jdt)(wfConfig).fold(
         errors ⇒ none,
-        (fb: (List[quiver.LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒ wfConfig.some
+        (nodeEdges: (List[quiver.LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒ {
+          val jobgraph = mkGraph(nodeEdges._1, nodeEdges._2)
+          if (jobgraph.isEmpty || jobgraph.hasLoop) {
+            logger.error(s"[Engine][validateWorkflowSubmission] The graph is either empty or contains a loop:")
+            none
+          } else {
+            logger.info(s"[Engine][validateWorkflowSubmission] The submitted workflow submission appears to be valid.")
+            wfConfig.some
+          }
+        }
       )
+    }
+
+  // Detects whether the workflow is already present in the system i.e.
+  // in-memory.
+  private
+  def isWorkflowIndexExisting(implicit wfdt: WorkflowDescriptorTable) : Reader[WorkflowConfig, Boolean] =
+    Reader{ (wfConfig: WorkflowConfig) ⇒
+      if (wfdt.contains(wfConfig.id)) true else false
     }
 
   /**

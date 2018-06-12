@@ -177,7 +177,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
       )
 
     case ValidateWorkflowSubmission(cfg) ⇒ 
-      validateWorkflowSubmission(jdt)(cfg).fold{
+      validateWorkflowSubmission(jdt, wfdt)(cfg).fold{
         logger.error(s"[Engine][Internal] Unable to validate the workflow submission : ${cfg}")
         sender() ! none
         }{
