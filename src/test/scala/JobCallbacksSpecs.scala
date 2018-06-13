@@ -28,7 +28,7 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
 
     "return a non-HTTP-200 code when workflow is a UUID, engine is NOT available and workflowId is valid." in {
       val wfId = java.util.UUID.randomUUID
-      Post(s"/flow/$wfId/cancel") ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/cancel") ~> JobCallbackRoutes ~> check {
         status shouldEqual InternalServerError
         responseAs[String] shouldEqual s"There was an internal server error."
       }
@@ -36,7 +36,7 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
 
     "return a non-HTTP-200 code when workflow is not a UUID, engine is NOT available." in {
       val wfId = "not-a-uuid"
-      Post(s"/flow/$wfId/cancel") ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/cancel") ~> JobCallbackRoutes ~> check {
         status shouldEqual InternalServerError
         responseAs[String] shouldEqual s"There was an internal server error."
       }
@@ -49,7 +49,7 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
     "return a non HTTP-200 code when workflow and job ids are UUIDs but engine is no longer available." in {
       val wfId = java.util.UUID.randomUUID
       val jobId = java.util.UUID.randomUUID
-      Post(s"/flow/$wfId/job/$jobId") ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/job/$jobId") ~> JobCallbackRoutes ~> check {
         responseAs[String] shouldEqual "Request does not contain valid JSON"
       }
     }
@@ -57,7 +57,7 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
     "return a non HTTP-200 code when workflow and job ids are not UUIDs regardless of whether engine is available." in {
       val wfId = "not-a-uuid"
       val jobId = "not-a-uuid"
-      Post(s"/flow/$wfId/job/$jobId") ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/job/$jobId") ~> JobCallbackRoutes ~> check {
         responseAs[String] shouldEqual "There was an internal server error."
       }
     }
@@ -89,14 +89,14 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
 
     "return a HTTP-200 code when workflow is a UUID, engine is available and workflowId is valid." in {
       val wfId = java.util.UUID.randomUUID
-      Post(s"/flow/$wfId/cancel") ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/cancel") ~> JobCallbackRoutes ~> check {
         responseAs[String] shouldEqual s"OK. Engine will stop Dataflow for workflow-id: $wfId"
       }
     }
 
     "return a non-HTTP-200 code when workflow is not a UUID, engine is available." in {
       val wfId = "not-a-uuid"
-      Post(s"/flow/$wfId/cancel") ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/cancel") ~> JobCallbackRoutes ~> check {
         status shouldEqual InternalServerError
         responseAs[String] shouldEqual s"There was an internal server error."
       }
@@ -109,7 +109,7 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
     "return a HTTP-200 code when workflow and job ids are UUIDs and engine is available but no json payload is detected." in {
       val wfId = java.util.UUID.randomUUID
       val jobId = java.util.UUID.randomUUID
-      Post(s"/flow/$wfId/job/$jobId") ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/job/$jobId") ~> JobCallbackRoutes ~> check {
         responseAs[String] shouldEqual s"Request does not contain valid JSON"
       }
     }
@@ -120,7 +120,7 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
       import io.circe._
       val data = """ {"google_dataflow_id" : "hi"} """
 
-      Post(s"/flow/$wfId/job/$jobId", HttpEntity(`application/json`, data)) ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/job/$jobId", HttpEntity(`application/json`, data)) ~> JobCallbackRoutes ~> check {
         status shouldEqual OK
         responseAs[String] must startWith(s"OK. Engine will supervise Dataflow jobId: $jobId")
       }
@@ -132,7 +132,7 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
       import io.circe._
       val data = """ {"google_dataflow_id" : 42 } """ // expected value type should be string instead of integers
 
-      Post(s"/flow/$wfId/job/$jobId", HttpEntity(`application/json`, data)) ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/job/$jobId", HttpEntity(`application/json`, data)) ~> JobCallbackRoutes ~> check {
         status shouldEqual OK
         responseAs[String] must startWith(s"Either we did not see the key")
       }
@@ -144,7 +144,7 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
       import io.circe._
       val data = """ {"google_dataflow_id_wrong" : "i dont care what value is here" } """ // expected value type should be string instead of integers
 
-      Post(s"/flow/$wfId/job/$jobId", HttpEntity(`application/json`, data)) ~> JobCallbackRoutes ~> check {
+      Post(s"/flows/$wfId/job/$jobId", HttpEntity(`application/json`, data)) ~> JobCallbackRoutes ~> check {
         status shouldEqual OK
         responseAs[String] must startWith(s"Either we did not see the key")
       }

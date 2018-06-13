@@ -295,6 +295,8 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
       WorkflowOps.updateWorkflow(workflow.id)(jobD.id)(JobStates.forced_termination)
       workflow.jobgraph.countNodes must be_>(0)
       workflow.jobgraph.bfs(jobD).head.state must be_==(JobStates.forced_termination)
+      WorkflowOps.getWorkflowStatus(workflow.id) must beSome
+      WorkflowOps.getWorkflowStatus(java.util.UUID.randomUUID) must beNone
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
 
@@ -426,6 +428,9 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
         (jobNodes: Vector[Job]) ⇒ jobNodes.size must be_==(0)
       }
 
+      WorkflowOps.getWorkflowStatus(workflow.id) must beSome
+      WorkflowOps.getWorkflowStatus(java.util.UUID.randomUUID) must beNone
+
       // Reset it for the next subsequent test run
       WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.inactive)
       WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.inactive)
@@ -469,6 +474,9 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
           jobNodes must contain(be_==(jobD)) // Make further assertions about what node should be there
       }
  
+      WorkflowOps.getWorkflowStatus(workflow.id) must beSome
+      WorkflowOps.getWorkflowStatus(java.util.UUID.randomUUID) must beNone
+
       // Reset it for the next subsequent test run
       WorkflowOps.updateWorkflow(workflow.id)(jobA.id)(JobStates.inactive)
       WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.inactive)
@@ -526,6 +534,9 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
         (jobNodes: Vector[Job]) ⇒
           jobNodes.size must be_==(0)
       }
+
+      WorkflowOps.getWorkflowStatus(workflow.id) must beSome
+      WorkflowOps.getWorkflowStatus(java.util.UUID.randomUUID) must beNone
 
       // Reset it for the next subsequent test run
       WorkflowOps.updateWorkflow(workflow.id)(shirtJob.id)(JobStates.inactive)

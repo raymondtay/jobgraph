@@ -1,6 +1,6 @@
 package hicoden.jobgraph.engine
 
-import hicoden.jobgraph.Workflow
+import hicoden.jobgraph.{JobStatus, WorkflowStatus, Workflow}
 import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 
 import java.util.UUID
@@ -15,6 +15,7 @@ import akka.actor.{ActorRef, ActorSystem}
 import akka.pattern._
 import akka.stream.ActorMaterializer
 import scala.language.postfixOps
+import scala.util._
 
 /**
   * Web Services w.r.t Workflows and supports the following
@@ -66,7 +67,20 @@ trait WorkflowWebServices {
   // into the payload.
   //
   private[engine]
-  def prepareGoodResponse = Reader{ (workflowId: Int) ⇒ HttpEntity(`application/json`, s"""{"workflow_id" : ${workflowId}}""") }
+  def prepareGoodResponse = Reader{ (workflowId: Int) ⇒
+    import io.circe.syntax._
+    HttpEntity(`application/json`, s"""{"workflow_index" : ${workflowId}}""")
+  }
+
+  //
+  // Prepares the http response object by injecting the given workflow id (i.e.
+  // UUID format) into the payload.
+  //
+  private[engine]
+  def prepareWorkflowResponse = Reader{ (workflowId: String) ⇒
+    import io.circe.syntax._
+    HttpEntity(`application/json`, s"""{"workflow_id" : ${workflowId.asJson}}""")
+  }
 
   //
   // Prepares the http response object by injecting the given error messages
@@ -78,8 +92,37 @@ trait WorkflowWebServices {
     HttpEntity(`application/json`, s"""{"errors" : ${messages.asJson}}""")
   }
 
+  //
+  // Prepares the http response and renders the appropriate JSON payload
+  //
+  private[engine]
+  def prepareWorkflowStatusResponse = Reader{ (wfStatus: WorkflowStatus) ⇒
+    import hicoden.jobgraph.engine.runtime.{jobStatusEncoder, wfStatusEncoder}
+    import io.circe.syntax._
+    HttpEntity(`application/json`, wfStatus.asJson.noSpaces)
+  }
+
+  //
+  // Prepares the http response and renders the appropriate JSON payload
+  //
+  private[engine]
+  def prepareWorkflowListingResponse = Reader{ (wfConfigs: List[WorkflowConfig]) ⇒
+    import hicoden.jobgraph.engine.runtime.{workflowsEncoder, workflowCfgEncoder}
+    import io.circe.syntax._
+    HttpEntity(`application/json`, wfConfigs.asJson.noSpaces)
+  }
+
+  private[engine]
+  def parseAsWorkflowIndex = Reader{ (s: String) ⇒ scala.util.Try{s.toInt}.toOption }
+
   /**
-    * Accepts a Json payload and validates whether the workflow can be created
+    * A central routes configuration which carries the handlers of the routes;
+    * the following are supported:
+    * (a) Creating a workflow
+    * (b) Starting a workflow
+    * (c) Listing all workflows
+    * (d) Querying the status of the workflow in question
+    *
     * @return Http-400 (either missing json or json with invalid format)
     *         Http-420 (if the json format does not conform or invalid after
     *         DSL validation)
@@ -87,18 +130,50 @@ trait WorkflowWebServices {
     */
   val WorkflowWebServicesRoutes : Route =
     post {
-      path("flow" / "create"){
+      path("flows" / "create"){
         decodeRequest { (req:RequestContext) ⇒
           onComplete(req.request.entity.dataBytes.runFold(akka.util.ByteString(""))(_ ++ _)) {
-            case scala.util.Failure(error) ⇒ complete(StatusCodes.BadRequest, prepareBadResponse("Submitted payload is not valid."::Nil))
-            case scala.util.Success(data)  ⇒
+            case Failure(error) ⇒ complete(StatusCodes.BadRequest, prepareBadResponse("Submitted payload is not valid."::Nil))
+            case Success(data)  ⇒
               validateAsWorkflowJson(data).fold(
                 complete(StatusCodes.BadRequest, prepareBadResponse("Expecting a JSON payload in the request, none seen."::Nil))
               )(submitNewWorkflowToEngine(_).fold(complete(StatusCodes.UnprocessableEntity, prepareBadResponse("JSON payload detected but invalid format."::Nil)))(workflow ⇒ complete(prepareGoodResponse(workflow))))
           }(req)
         }
       }
+    } ~
+    put {
+      path("flows" / Segment / "start"){ someIndex ⇒
+        decodeRequest{
+          parseAsWorkflowIndex(someIndex).fold(
+            complete(StatusCodes.BadRequest, prepareBadResponse("A workflow index should be some number"::Nil))
+          ){anIndex ⇒
+            implicit val startWfTimeout : akka.util.Timeout = 3.seconds
+            Await.result((engine ? StartWorkflow(anIndex)).mapTo[String], startWfTimeout.duration) match {
+              case "no such id" ⇒ complete(StatusCodes.BadRequest, prepareBadResponse(s"No such workflow index id found: $anIndex"::Nil))
+              case workflowId ⇒ complete(prepareWorkflowResponse(workflowId))
+            }
+          }
+        }
+      }
+    } ~
+    get {
+      path("flows" / PathEnd){
+        implicit val listingWfTimeout : akka.util.Timeout = 3.seconds
+        onComplete((engine ? WorkflowListing).mapTo[List[WorkflowConfig]]) {
+          case Failure(error) ⇒ complete(StatusCodes.InternalServerError, prepareBadResponse("Engine unable to complete your request ; try again later." :: Nil)) 
+          case Success(data)  ⇒ complete(prepareWorkflowListingResponse(data)) 
+        }
+      } ~
+      path("flows" / JavaUUID){ runtimeWorkflowId ⇒
+        implicit val statusWfTimeout : akka.util.Timeout = 3.seconds
+        onComplete((engine ? WorkflowRuntimeReport(runtimeWorkflowId)).mapTo[Option[WorkflowStatus]]) {
+          case Failure(error) ⇒ complete(StatusCodes.InternalServerError, prepareBadResponse("Engine unable to complete your request ; try again later." :: Nil))
+          case Success(data)  ⇒ data.fold(complete(StatusCodes.BadRequest, prepareBadResponse("Did not detect this workflow id in the system" :: Nil)))(data ⇒ complete(prepareWorkflowStatusResponse(data)))
+        }
+      }
     }
 
 }
+
 
