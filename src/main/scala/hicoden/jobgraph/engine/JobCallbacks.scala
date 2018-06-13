@@ -116,7 +116,7 @@ trait JobCallbacks {
    */
   val JobCallbackRoutes : Route = 
     post {
-      path("flow" / Segment / "job" / Segment){ (a, b) ⇒
+      path("flows" / Segment / "job" / Segment){ (a, b) ⇒
         decodeRequest { (req:RequestContext) ⇒
           onComplete(req.request.entity.dataBytes.runFold(akka.util.ByteString(""))(_ ++ _)) {
             case scala.util.Failure(error) ⇒ complete("Expecting a payload in the request, none seen.")
@@ -126,7 +126,7 @@ trait JobCallbacks {
       }
     } ~
     post {
-      path("flow" / Segment / "cancel"){ a ⇒
+      path("flows" / Segment / "cancel"){ a ⇒
         (tellEngineToCancel compose validateAsUUID)(a)
       }
     }

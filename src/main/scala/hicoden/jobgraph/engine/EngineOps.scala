@@ -48,6 +48,17 @@ trait EngineOps extends Concretizer {
   }
 
   /**
+    * Returns all workflows currently present in the system; pagination
+    * mechanism would be implemented at a later stage.
+    * @param wfdt
+    * @return a container where each value is a (k,v) pair
+    */
+  def getAllWorkflows : State[WorkflowDescriptorTable, List[WorkflowConfig]] =
+    for {
+      s ← State.get[WorkflowDescriptorTable]
+    } yield s.values.toList
+
+  /**
    * Attempt to load the workflow by indexing its index in the configuration
    * file that was loaded (remember, by default its [[application.conf]]) 
    * @param workflowIndex

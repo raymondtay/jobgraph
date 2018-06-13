@@ -32,10 +32,13 @@ import java.util.UUID
 //
 
 case class StartWorkflow(workflowId: Int)
-case class StopWorkflow(wfId: WorkflowId)
+case class StopWorkflow(workflowId: WorkflowId)
 case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStates.States)
-case class SuperviseJob(wfId: WorkflowId, jobId: JobId, googleDataflowId: String)
+case class SuperviseJob(workflowId: WorkflowId, jobId: JobId, googleDataflowId: String)
 case class ValidateWorkflowSubmission(wfConfig : WorkflowConfig)
+case object WorkflowListing
+case class WorkflowRuntimeReport(workflowId: WorkflowId)
+
 
 //
 // Engine should perform the following:
@@ -189,6 +192,10 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
           logger.debug(s"[Engine][Internal] workflow descriptors tables has been updated.")
           sender() ! Some(cfg.id)
       }
+
+    case WorkflowRuntimeReport(workflowId) ⇒ sender() ! getWorkflowStatus(workflowId)
+
+    case WorkflowListing ⇒ sender() ! getAllWorkflows.runA(wfdt).value
 
     case Terminated(child) ⇒
       val (xs, result) = removeFromLookup(child).run(workersToWfLookup).value

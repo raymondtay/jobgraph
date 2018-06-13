@@ -29,12 +29,18 @@ object JobStates extends Enumeration {
   val inactive, start, active, forced_termination, finished = Value
 }
 
+object WorkflowStates extends Enumeration {
+  type States = Value
+  val not_started, started, done = Value
+}
+
 sealed trait Step {
   private[jobgraph] var state = JobStates.inactive
 }
 
 case class Workflow(jobgraph: QGraph[Job,UUID,String]) extends Step {
   private[jobgraph] val create_timestamp : java.time.Instant = Instant.now()
+  private[jobgraph] val status : WorkflowStates.States = WorkflowStates.not_started
   private[jobgraph] val id : WorkflowId = UUID.randomUUID
 }
 
@@ -191,6 +197,23 @@ trait WorkflowOps extends WorkflowImplicits {
   def updateNodeState(state: JobStates.States) : Reader[Job, Job] = Reader {(node: Job) ⇒
     node.state = state
     node
+  }
+
+  /**
+    * Looksup the workflow in the internal storage and exports that information
+    * out 
+    * @param wfId
+    * @return Some(WorkflowStatus) or None
+    */
+  def getWorkflowStatus : Reader[WorkflowId, Option[WorkflowStatus]] = Reader{(wfId: WorkflowId) ⇒
+    def render(job: Job) = JobStatus(id = job.id, status = job.state)
+
+    work.find(_.id equals wfId).fold(none[WorkflowStatus]){
+      workflow ⇒
+      WorkflowStatus(createTime = workflow.create_timestamp,
+                     status     = workflow.status,
+                     steps      = workflow.jobgraph.nodes.map(render(_)).toList).some
+    } 
   }
 
 }
