@@ -20,11 +20,11 @@ object Functions {
   }
 
   def buildPythonCommand : Reader[JobContext, (String,String,Map[String,String])] = Reader{ (cfg: JobContext) ⇒
-    (s"python -m ${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback http://${cfg.location.hostname}:${cfg.location.port}/flow/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("PYTHONPATH" -> cfg.workdir))
+    (s"python -m ${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback http://${cfg.location.hostname}:${cfg.location.port}/flows/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("PYTHONPATH" -> cfg.workdir))
   }
 
   def buildJavaCommand : Reader[JobContext, (String,String,Map[String,String])] = Reader{ (cfg: JobContext) ⇒
-    (s"${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback=http://${cfg.location.hostname}:${cfg.location.port}/flow/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("CLASSPATH" -> cfg.workdir))
+    (s"${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback=http://${cfg.location.hostname}:${cfg.location.port}/flows/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("CLASSPATH" -> cfg.workdir))
   }
 
 }

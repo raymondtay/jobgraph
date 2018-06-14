@@ -102,6 +102,7 @@ class JobFSM extends LoggingFSM[State, Data] {
       log.info(s"""
         About to start ${wfId}
         """)
+      engineRef ! UpdateWorkflow(wfId, job.id, JobStates.active)
       val ctx = ExecContext(job.config)
       val runner = new DataflowRunner
       runner.run(ctx)(JobContextManifest.manifest(wfId, job.id))
