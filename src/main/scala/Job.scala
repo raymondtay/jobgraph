@@ -29,6 +29,8 @@ object JobStates extends Enumeration {
   val inactive, start, active, forced_termination, finished = Value
 }
 
+// Note: the state "done" does not differentiate between forced termination of
+// ANY of its jobs nor normal completion. Maybe we might make it more specific.
 object WorkflowStates extends Enumeration {
   type States = Value
   val not_started, started, done = Value
@@ -211,9 +213,33 @@ trait WorkflowOps extends WorkflowImplicits {
     work.find(_.id equals wfId).fold(none[WorkflowStatus]){
       workflow ⇒
       WorkflowStatus(createTime = workflow.create_timestamp,
-                     status     = workflow.status,
+                     status     = if (isWorkflowStarted(workflow) && !isWorkflowDone(workflow)) WorkflowStates.started
+                                  else if (isWorkflowStarted(workflow) && isWorkflowDone(workflow)) WorkflowStates.done
+                                  else WorkflowStates.not_started,
                      steps      = workflow.jobgraph.nodes.map(render(_)).toList).some
     } 
+  }
+
+  // As long as ANY of the root nodes ∉ "inactive", then its considered
+  // started.
+  private[jobgraph]
+  def isWorkflowStarted = Reader{ (workflow: Workflow) ⇒
+    val inactiveNodes = workflow.jobgraph.roots.filter(node ⇒ node.state equals JobStates.inactive )
+    if (inactiveNodes.size == workflow.jobgraph.roots.size) false else true
+  }
+
+  // A workflow is considered "done" iff all nodes entered forced termination
+  // or finished
+  private[jobgraph]
+  def isWorkflowDone = Reader{ (workflow: Workflow) ⇒
+    val doneNodes =
+      workflow.jobgraph.nodes.filter(
+        node ⇒
+          (node.state equals JobStates.forced_termination) ||
+          (node.state equals JobStates.finished)
+        )
+    if (doneNodes.isEmpty) false else
+    if (doneNodes.size == workflow.jobgraph.nodes.size) true else false
   }
 
 }
