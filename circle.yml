@@ -6,7 +6,7 @@
 #
 machine:
   environment:
-    SBT_VERSION: 1.1.1
+    SBT_VERSION: 0.13.17
     SBT_OPTS: "-Xms3072M -Xmx3072M -Xss1M -XX:+CMSClassUnloadingEnabled"
     COVERALLS_REPO_TOKEN : epxO4zHVNvU9gbIfnfgXsqYRNuyWhw5GZ
 
