@@ -12,7 +12,6 @@ import hicoden.jobgraph.configuration.step.model.JobConfig
 import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
-import hicoden.jobgraph.{ConvergeGraph, ScatterGatherGraph}        // a Digraph scatter-gatther
 import hicoden.jobgraph.fsm.{JobFSM, StartRun, StopRun, MonitorRun}
 import java.util.UUID
 
