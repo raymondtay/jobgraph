@@ -23,9 +23,7 @@ object Functions {
     def buildTask = s"""--task=${cfg.jobCtx.runner.module} --task_name='${spaceToUnderscore(cfg.jobCtx.name)}' --run_as=${cfg.runAs}"""
     def buildMesosUri = s"""--mesos_master=${cfg.mesosCtx.hostname}:${cfg.mesosCtx.hostport}"""
 
-    val r = (s"""${cfg.taskExec} ${buildTask} ${buildMesosUri}""", "", Map.empty[String,String])
-    println(r)
-    r
+    (s"""${cfg.taskExec} ${buildTask} ${buildMesosUri} ${(cfg.jobCtx.runner.cliargs :+ s"--callback=http://${cfg.jobCtx.location.hostname}:${cfg.jobCtx.location.port}/flows/${cfg.jobCtx.workflowId}/job/${cfg.jobCtx.jobId}").mkString(" ")}""", "", Map.empty[String,String])
   }
 
   //

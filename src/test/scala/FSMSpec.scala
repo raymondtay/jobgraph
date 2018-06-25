@@ -17,6 +17,12 @@ object EventLoggingEnabled {
 implicit def system(actorSystemName: String) =
   ActorSystem(actorSystemName,
               ConfigFactory.parseString("""
+                mesos {
+                  enabled  : true
+                  runas    : hicoden
+                  hostname : localhost
+                  hostport : 5050
+                }
                 dataflow-dispatcher {
                   type = Dispatcher
                   executor = "thread-pool-executor"
@@ -94,7 +100,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
     fsm.stateName == Idle
     fsm.isTimerActive("Start Job") == false
-    fsm ! StartRun(wfId, jobId, engine)
+    fsm ! StartRun(wfId, jobId, engine, None)
     fsm.stateName == Active
     fsm.isTimerActive("Start Job") == true
   }
@@ -110,7 +116,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
     fsm.stateName == Idle
     fsm.isTimerActive("Start Job") == false
-    fsm ! StartRun(wfId, jobId, engine)
+    fsm ! StartRun(wfId, jobId, engine, None)
     fsm.stateName == Active
     fsm.isTimerActive("Start Job") == true
  
@@ -135,7 +141,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
  
     within(2 seconds) {
       EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-4", pattern = "About to start", occurrences = 1).intercept {
-        fsm ! StartRun(wfId, job, engine)
+        fsm ! StartRun(wfId, job, engine, None)
         fsm.stateName == Active
         fsm.isTimerActive("Start Job") == true
       }
@@ -161,7 +167,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
  
     within(8 seconds) {
       EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-5", pattern = "About to start", occurrences = 1).intercept {
-        fsm ! StartRun(wfId, job, engine)
+        fsm ! StartRun(wfId, job, engine, None)
         fsm.stateName == Active
         fsm.isTimerActive("Start Job") == true
         fsm ! Go
@@ -196,9 +202,9 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
  
     within(8 seconds) {
       EventFilter.info(source = "akka://JobFSMSpecs/user/the-fsm-6", pattern = "About to start", occurrences = 1).intercept {
-        fsm ! StartRun(wfId, job, engine)
+        fsm ! StartRun(wfId, job, engine, None)
         fsm.stateName == Active
-        fsm.stateData == Processing(wfId, job, engine)
+        fsm.stateData == Processing(wfId, job, engine, None)
         fsm.isTimerActive("Start Job") == true
         Thread.sleep(3000)
         fsm ! MonitorRun(wfId, job.id, engine, googleDataflowId)

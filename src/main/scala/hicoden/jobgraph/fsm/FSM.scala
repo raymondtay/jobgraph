@@ -110,9 +110,15 @@ class JobFSM extends LoggingFSM[State, Data] {
         val runner = new DataflowRunner
         runner.run(ctx)(JobContextManifest.manifest(wfId, job.id))
       }{mCfg ⇒ 
-        val ctx = MesosExecContext(job.config, mCfg)
-        val runner = new MesosDataflowRunner
-        runner.run(ctx)(JobContextManifest.manifestMesos(wfId, job.id, mCfg))
+        if (mCfg.enabled) {
+          val ctx = MesosExecContext(job.config, mCfg)
+          val runner = new MesosDataflowRunner
+          runner.run(ctx)(JobContextManifest.manifestMesos(wfId, job.id, mCfg))
+        } else {
+          val ctx = ExecContext(job.config)
+          val runner = new DataflowRunner
+          runner.run(ctx)(JobContextManifest.manifest(wfId, job.id))
+        }
       }
       stay
 

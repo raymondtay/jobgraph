@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# The MesosDataflow runner supporting Spotify's Scio Apache Beam
+OS=`uname`
+echo "Invoked by MesosDataflowRunner, OS: ${OS}; OK."
+
