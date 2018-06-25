@@ -8,6 +8,7 @@ import akka.http.scaladsl.Http
 import scala.language.{higherKinds, postfixOps}
 import scala.util._
 import scala.concurrent.duration._
+import hicoden.jobgraph.configuration.engine.model.MesosConfig
 import hicoden.jobgraph.configuration.step.model.JobConfig
 import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
@@ -70,11 +71,19 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     }
     Router(RoundRobinRoutingLogic(), routees)
   }
+  private[this] var mesosConfig : Option[MesosConfig] = none
 
   override def preStart() = {
     val (_jdt, _wfdt) = prepareDescriptorTables(jobNamespaces, workflowNamespaces)
     jdt  = _jdt
     wfdt = _wfdt
+    mesosConfig =
+      loadMesosConfig.fold(
+        errors ⇒
+        { logger.warn(s"Unable to load Mesos Config; not going to use Apache Mesos: details $errors")
+          None
+        },
+      _.some)
   }
 
   def receive : PartialFunction[Any, Unit] = {
@@ -261,7 +270,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     * handle it
     */
   def activateWorkers(wfId: WorkflowId) : Reader[Set[(ActorRef, Job)], Set[Unit]] = Reader { (actors: Set[(ActorRef, Job)]) ⇒
-    actors.map(actor ⇒ actor._1 ! StartRun(wfId, actor._2, self))
+    actors.map(actor ⇒ actor._1 ! StartRun(wfId, actor._2, self, mesosConfig))
   }
 
   /**

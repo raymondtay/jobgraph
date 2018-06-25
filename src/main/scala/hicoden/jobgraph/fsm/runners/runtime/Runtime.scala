@@ -9,7 +9,25 @@ object Functions {
 
   def isPythonModule = Reader{ (cfg: JobContext) ⇒ cfg.runner.runner.split(":")(1) equals ExecType.python.toString }
   def isJavaModule = Reader{ (cfg: JobContext) ⇒ cfg.runner.runner.split(":")(1) equals ExecType.java.toString }
- 
+
+  //
+  // Builds the command to run the [[MesosScioRunner]]
+  // e.g. MesosScioJob --task=/home/hicoden/wordcount-0.1.0-SNAPSHOT/bin/wordcount
+  //                   --mesos_master=10.148.0.2:5050
+  //                   --run_as=donkey
+  //                   --task_name="WordCount Google Dataflow"
+  //
+  def buildMesosCommand : Reader[MesosJobContext, (String,String,Map[String,String])] = Reader{ (cfg: MesosJobContext) ⇒
+    def spaceToUnderscore(s: String) = (for { c ← s } yield { if (c == ' ') '_' else c }).mkString
+
+    def buildTask = s"""--task=${cfg.jobCtx.runner.module} --task_name='${spaceToUnderscore(cfg.jobCtx.name)}' --run_as=${cfg.runAs}"""
+    def buildMesosUri = s"""--mesos_master=${cfg.mesosCtx.hostname}:${cfg.mesosCtx.hostport}"""
+
+    val r = (s"""${cfg.taskExec} ${buildTask} ${buildMesosUri}""", "", Map.empty[String,String])
+    println(r)
+    r
+  }
+
   //
   // This function would throw a [[UnsupportedOperationException]] and its
   // intentional because of the fact that it should not have happened.

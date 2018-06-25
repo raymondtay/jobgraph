@@ -2,6 +2,7 @@ package hicoden.jobgraph.fsm
 
 import hicoden.jobgraph.{Job, JobId, JobStates, WorkflowId}
 import hicoden.jobgraph.engine.UpdateWorkflow
+import hicoden.jobgraph.configuration.engine.model.MesosConfig
 import hicoden.jobgraph.fsm.runners._
 import hicoden.jobgraph.fsm.runners.runtime._
 import akka.actor._
@@ -44,7 +45,7 @@ import scala.language.postfixOps
 // care of terminating the job based on its semantics).
 
 // Events
-case class StartRun(wfId: WorkflowId, job : Job, engine: ActorRef)
+case class StartRun(wfId: WorkflowId, job : Job, engine: ActorRef, mesosConfig: Option[MesosConfig])
 case object StopRun
 case object Go
 case class MonitorRun(wfId: WorkflowId, jobId: JobId, engine: ActorRef, googleDataflowId: String)
@@ -58,7 +59,7 @@ case class Terminated(forced: Boolean = false) extends State
 // Data
 sealed trait Data
 case object Uninitialized extends Data
-case class Processing(wfId: WorkflowId, job: Job, engineRef: ActorRef) extends Data
+case class Processing(wfId: WorkflowId, job: Job, engineRef: ActorRef, mesosConfig : Option[MesosConfig]) extends Data
 
 class JobFSM extends LoggingFSM[State, Data] {
 
@@ -79,9 +80,9 @@ class JobFSM extends LoggingFSM[State, Data] {
       log.error("Did not receive any signal from Engine, stopping.")
       stop(FSM.Failure("Did not receive signal from Engine within the time limit."))
 
-    case Event(StartRun(wfId, job, engineActor), Uninitialized) ⇒
+    case Event(StartRun(wfId, job, engineActor, mesosCfg), Uninitialized) ⇒
       log.info("Received the job: {} for workflow: {}", job.id, wfId)
-      goto(Active) using Processing(wfId, job, engineActor)
+      goto(Active) using Processing(wfId, job, engineActor, mesosCfg)
   }
 
   onTransition {
@@ -98,14 +99,21 @@ class JobFSM extends LoggingFSM[State, Data] {
       log.info("Stopping run")
       stop(FSM.Shutdown)
 
-    case Event(Go, Processing(wfId, job, engineRef)) ⇒
+    case Event(Go, Processing(wfId, job, engineRef, mesosCfg)) ⇒
       log.info(s"""
         About to start ${wfId}
         """)
       engineRef ! UpdateWorkflow(wfId, job.id, JobStates.active)
-      val ctx = ExecContext(job.config)
-      val runner = new DataflowRunner
-      runner.run(ctx)(JobContextManifest.manifest(wfId, job.id))
+
+      mesosCfg.fold[scala.concurrent.Future[_]]{ // not doing anything with the async result so its going to Future[_]
+        val ctx = ExecContext(job.config)
+        val runner = new DataflowRunner
+        runner.run(ctx)(JobContextManifest.manifest(wfId, job.id))
+      }{mCfg ⇒ 
+        val ctx = MesosExecContext(job.config, mCfg)
+        val runner = new MesosDataflowRunner
+        runner.run(ctx)(JobContextManifest.manifestMesos(wfId, job.id, mCfg))
+      }
       stay
 
     case Event(MonitorRun(wfId, jobId, engineRef, googleDataflowId), _) ⇒
@@ -117,7 +125,7 @@ class JobFSM extends LoggingFSM[State, Data] {
         fold(forcedStop(wfId, jobId, engineRef)(googleDataflowId))(decideToStopOrContinue(wfId, jobId, engineRef, googleDataflowId)(_))
 
 
-    case Event(StateTimeout, Processing(wfId, job, engineRef)) ⇒
+    case Event(StateTimeout, Processing(wfId, job, engineRef, mesosCfg)) ⇒
       log.info("Finished processing, shutting down.")
       engineRef ! UpdateWorkflow(wfId, job.id, JobStates.finished)
       stop(FSM.Shutdown)

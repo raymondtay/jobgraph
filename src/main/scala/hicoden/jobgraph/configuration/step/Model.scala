@@ -27,7 +27,7 @@ case class JobConfig(id : Int, name : String, description: String, workdir : Str
 
 object RunnerType extends Enumeration {
   type RunnerType = Value
-  val Dataflow = Value
+  val Dataflow, MesosDataflow = Value
 }
 
 object ExecType extends Enumeration {

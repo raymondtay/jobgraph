@@ -1,6 +1,7 @@
 package hicoden.jobgraph.engine
 
 import hicoden.jobgraph.WorkflowOps
+import hicoden.jobgraph.configuration.engine.{Parser ⇒ EngineConfigParser}
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
 import hicoden.jobgraph.configuration.workflow.internal.Concretizer
@@ -14,7 +15,7 @@ import quiver._
 
 /**
  * Responsible for taking the hydrated workflow configs and instantiating the
- * proper jobgraphs.
+ * proper jobgraphs. Loads the engine's configuration too.
  *
  * @author Raymond Tay
  * @verison 1.0
@@ -26,6 +27,13 @@ trait EngineOps extends Concretizer {
   import WorkflowOps._
   object StepOps extends StepParser with StepLoader
   object WfOps extends WfParser with WfLoader
+  object EngineCfgParser extends EngineConfigParser
+
+  /**
+    * Loads the Apache Mesos Config
+    * @returns Left(validation errors) or Right(MesosConfig)
+    */
+  def loadMesosConfig = EngineCfgParser.loadDefault("mesos")
 
   /**
    * Called when the [[Engine]] actor boots up, reading and validating the

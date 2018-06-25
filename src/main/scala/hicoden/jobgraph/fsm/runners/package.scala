@@ -2,7 +2,8 @@ package hicoden.jobgraph.fsm
 
 import scala.concurrent._
 import hicoden.jobgraph.engine.GoogleDataflowId
-import hicoden.jobgraph.fsm.runners.runtime.{JobContext}
+import hicoden.jobgraph.configuration.engine.model.MesosConfig
+import hicoden.jobgraph.fsm.runners.runtime.{JobContext, MesosJobContext}
 
 //
 // The FSM will use "runners" which interacts with the targeted runners of the
@@ -29,6 +30,8 @@ package object runners {
    * concrete runner see [[DataflowRunner]].
    */
   case class ExecContext(jobConfig: JobConfig)
+
+  case class MesosExecContext(jobConfig : JobConfig, mesosCfg : MesosConfig)
 
   //
   // When a concrete class implements this, the concrete class must implement
@@ -76,6 +79,20 @@ package object runners {
      * @return A future which carries the [[JobContext]] as payload
      */
     def run(ctx: ExecContext)(f: JobConfig ⇒ runtime.JobContext)(implicit ec: ExecutionContext) : Future[JobContext]
+  }
+
+  trait MesosExecRunner {
+
+    /**
+     * Takes the execution context in Mesos and executes against the Apache
+     * Mesos cluster; A future is returned which carries the result of the
+     * execution.
+     * @param ctx
+     * @param f a transformer that converts the configuration to a runtime
+     * representation
+     * @return A future which carries the [[JobContext]] as payload
+     */
+    def run(ctx: MesosExecContext)(f: JobConfig ⇒ runtime.MesosJobContext)(implicit ec: ExecutionContext) : Future[MesosJobContext]
   }
 
 }

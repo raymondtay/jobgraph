@@ -1,7 +1,7 @@
 package hicoden.jobgraph.fsm.runners
 
 
-import hicoden.jobgraph.fsm.runners.runtime.{JobContext, JobContextManifest, Functions}
+import hicoden.jobgraph.fsm.runners.runtime.{JobContext, MesosJobContext, JobContextManifest, Functions}
 import hicoden.jobgraph.configuration.step.model.JobConfig
 import scala.sys.process._
 import scala.language.existentials
@@ -60,9 +60,9 @@ class DataflowRunner extends ExecRunner {
 }
 
 // JobGraph Dataflow runner and this type of runner basically hooks to a
-// running Apache Mesos cluster and feeds it stuff on what it needs to know.
-//
-class MesosDataflowRunner extends ExecRunner {
+// running Apache Mesos cluster and leverages the [[MesosJobContext]] object
+// to execute Apache Beam jobs.
+class MesosDataflowRunner extends MesosExecRunner {
 
   import cats._, data._, implicits._
 
@@ -80,12 +80,12 @@ class MesosDataflowRunner extends ExecRunner {
    *          the job
    * @return A future which carries the [[JobContext]] as payload
    */
-  def run(ctx: ExecContext)(f: JobConfig ⇒ JobContext)(implicit ec: ExecutionContext) : Future[JobContext] = Future {
+  def run(ctx: MesosExecContext)(f: JobConfig ⇒ MesosJobContext)(implicit ec: ExecutionContext) : Future[MesosJobContext] = Future {
     import Functions._
     val runtimeContext = f(ctx.jobConfig)
 
     val result : Either[Throwable,scala.sys.process.Process] = scala.util.Try{
-      val (command, cwd, env) = buildCommand(runtimeContext)
+      val (command, cwd, env) = buildMesosCommand(runtimeContext)
       if (cwd.isEmpty) Process(command, None, env.toSeq:_*).run()
       else Process(command, Some(new java.io.File(cwd)), env.toSeq:_*).run()
     }.toEither
@@ -94,12 +94,12 @@ class MesosDataflowRunner extends ExecRunner {
  
   // If error occurs, a log is produced and we do not alter the context but
   // return it
-  def onError(ctx: runtime.JobContext) = (error: Throwable) ⇒ {
+  def onError(ctx: runtime.MesosJobContext) = (error: Throwable) ⇒ {
     logger.error(s"Unable to trigger program with this error: ${error.getStackTrace}")
     ctx
   }
 
-  def onSuccess(ctx: runtime.JobContext) = (proc: scala.sys.process.Process) ⇒ {
+  def onSuccess(ctx: runtime.MesosJobContext) = (proc: scala.sys.process.Process) ⇒ {
     logger.info("About to parse the return data and validate it.")
     ctx
   }
