@@ -34,9 +34,17 @@ trait Parser {
     * @param namespace the HOCON conforming namespace key(s) which should point to the array of configuration for "steps"
     * @return Either.Left(errors) if errors else Either.Right(container of [[MesosConfig]])
     */
-  def loadDefault: Reader[String, LoadingResult[MesosConfig]] =
+  def loadMesosDefaults: Reader[String, LoadingResult[MesosConfig]] =
     Reader{ (namespace: String) ⇒
       Try{ loadConfigOrThrow[MesosConfig](namespace) }.toOption match {
+        case Some(cfg) ⇒ cfg.validNel
+        case None ⇒ LoadFailure(namespace).invalidNel
+      }
+    }
+
+  def loadEngineDefaults: Reader[String, LoadingResult[JobgraphConfig]] =
+    Reader{ (namespace: String) ⇒
+      Try{ loadConfigOrThrow[JobgraphConfig](namespace) }.toOption match {
         case Some(cfg) ⇒ cfg.validNel
         case None ⇒ LoadFailure(namespace).invalidNel
       }

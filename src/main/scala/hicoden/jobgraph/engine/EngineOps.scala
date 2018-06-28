@@ -33,7 +33,13 @@ trait EngineOps extends Concretizer {
     * Loads the Apache Mesos Config
     * @returns Left(validation errors) or Right(MesosConfig)
     */
-  def loadMesosConfig = EngineCfgParser.loadDefault("mesos")
+  def loadMesosConfig = EngineCfgParser.loadMesosDefaults("mesos")
+ 
+  /**
+    * Loads the Jobgraph engine's Config
+    * @returns Left(validation errors) or Right(JobgraphConfig)
+    */
+  def loadEngineConfig = EngineCfgParser.loadEngineDefaults("jobgraph")
 
   /**
    * Called when the [[Engine]] actor boots up, reading and validating the

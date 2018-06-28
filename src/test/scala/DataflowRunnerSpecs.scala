@@ -1,5 +1,6 @@
 package hicoden.jobgraph.fsm.runners
 
+import hicoden.jobgraph.configuration.engine.model._
 import hicoden.jobgraph.configuration.step.model._
 
 import pureconfig._
@@ -104,7 +105,8 @@ class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with
     val jobConfig = RunnerData.genJavaJobConfig.sample
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
-    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId)(jobConfig.get)).awaitFor(500.millis)
+    val jobgraphCfg = JobgraphConfig("localhost", 8080)
+    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)(jobConfig.get)).awaitFor(500.millis)
   }
 
   def verifyCanRunPythonDataflowRunnerAndReturn = {
@@ -113,7 +115,8 @@ class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with
     val jobConfig = RunnerData.genPythonJobConfig.sample
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
-    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId)(jobConfig.get)).awaitFor(500.millis)
+    val jobgraphCfg = JobgraphConfig("localhost", 8080)
+    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)(jobConfig.get)).awaitFor(500.millis)
   }
 
 }
