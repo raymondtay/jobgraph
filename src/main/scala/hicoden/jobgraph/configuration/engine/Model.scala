@@ -4,11 +4,10 @@ package hicoden.jobgraph.configuration.engine.model
   * see [[application.conf]] for details on the namespace 'mesos' and 'jobgraph'
   *  mesos {
   *   enabled         : true
+  *   timeout         : 10
   *   runas           : hicoden
-  *   master.hostname : 10.148.0.4
-  *   master.hostname : ${?JOBGRAPH_MASTER_HOST}
-  *   master.hostport : 5050
-  *   master.hostport : ${?JOBGRAPH_MASTER_PORT}
+  *   uris : ["10.148.0.7:5050", "10.148.0.7:5050"]
+  *   uris : ${?MESOS_CONTACT_POINTS}
   *  }
   * jobgraph {
   *   hostname : 10.148.0.2
@@ -18,6 +17,6 @@ package hicoden.jobgraph.configuration.engine.model
   * }
   *
   */
-case class MesosConfig(enabled: Boolean, runas: String, hostname: String, hostport: Int)
+case class MesosConfig(enabled: Boolean, timeout : Int, runas: String, uris: List[String])
 case class JobgraphConfig(hostname : String, hostport : Int)
 

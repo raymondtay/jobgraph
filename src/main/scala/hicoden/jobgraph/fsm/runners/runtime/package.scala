@@ -9,10 +9,15 @@ package hicoden.jobgraph.fsm.runners
 //
 package object runtime {
 
+  import hicoden.jobgraph.cc.{LRU, StatsMiner}
   import cats._, data._, implicits._
   import hicoden.jobgraph.{JobId, WorkflowId}
   import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
   import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig}
+  import akka.actor.ActorSystem
+  import akka.stream.ActorMaterializer
+  import scala.concurrent._
+  import scala.concurrent.duration._
 
   // Represents the location of this "JobEngine"
   case class JobEngineLocationContext(hostname : String, port: Int)
@@ -29,13 +34,18 @@ package object runtime {
   // @param runAs the "user" that Apache Mesos will register this job with
   // @param jobCtx jobContext
   // @param mesosCtx contextual info regarding the Apache Mesos cluster
-  case class MesosJobContext(taskExec : String, runAs: String, jobCtx: JobContext, mesosCtx: MesosConfig)
+  case class MesosJobContext(taskExec : String, runAs: String, jobCtx: JobContext, mesosCtx: MesosRuntimeConfig)
+
+  case class MesosRuntimeConfig(enabled: Boolean, runas: String, hostname: String, hostport: Int)
 
   // [[JobContextManifest]] is the typeclass where all functions related to
   // transforming [[JobConfig]] to [[JobContext]]es so that the runner can use
   // during the execution run of the Job s.t. [[JobConfig]] remains immutable
-  // 
-  trait JobContextManifest {
+  //
+  // If mesos is enabled we arranged for the LRU algorithm to be applied using
+  // the statistics we have gathered at the time of dispatch.
+  //
+  trait JobContextManifest extends StatsMiner {
     def manifest(wfId: WorkflowId, jobId: JobId, jgCfg: JobgraphConfig) =
       (cfg: JobConfig)⇒
         JobContext(name = cfg.name, description = cfg.description,
@@ -44,17 +54,17 @@ package object runtime {
                    runner = cfg.runner)
 
     def manifestMesos(wfId: WorkflowId, jobId: JobId, mesosCfg: MesosConfig, jgCfg: JobgraphConfig) =
-      (cfg: JobConfig)⇒
+      (cfg: JobConfig)⇒ {
+        implicit val mesosRequestTimeout : Duration = mesosCfg.timeout.seconds
         MesosJobContext(
           taskExec = "MesosScioJob",
           runAs = mesosCfg.runas,
           JobContext(name = cfg.name, description = cfg.description,
                    workdir = cfg.workdir, workflowId = wfId,
                    jobId = jobId, location = JobEngineLocationContext(jgCfg.hostname, jgCfg.hostport),
-                   runner = cfg.runner), mesosCfg)
+                   runner = cfg.runner), select(LRU)(mesosRequestTimeout)(mesosCfg))
+      }
  
   }
-
-  object JobContextManifest extends JobContextManifest
 
 }

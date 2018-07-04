@@ -6,6 +6,7 @@ import hicoden.jobgraph.configuration.step.model._
 import pureconfig._
 import pureconfig.error._
 import org.specs2._
+import org.specs2.specification.AfterAll
 import org.specs2.concurrent.ExecutionEnv
 import org.scalacheck._
 import com.typesafe.config._
@@ -14,6 +15,8 @@ import Gen.{posNum, alphaStr, containerOfN, choose, pick, mapOf, listOf, listOfN
 import Prop.{forAll, throws, AnyOperators}
 import scala.concurrent._
 import scala.concurrent.duration._
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
 
 object RunnerData {
 
@@ -90,11 +93,19 @@ object RunnerData {
 // scripts which return a response) in order to check it here as the design
 // might change.
 //
-class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with ScalaCheck {
+class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with ScalaCheck with runtime.JobContextManifest with AfterAll {
   override def is = sequential ^ s2"""
     Check that DataflowRunner can actually trigger an java program $verifyCanRunJavaDataflowRunnerAndReturn
     Check that DataflowRunner can actually trigger an python program $verifyCanRunPythonDataflowRunnerAndReturn
   """
+  
+  implicit val actorSystem = ActorSystem("DataflowRunnerSpecsActorSystem")
+  implicit val actorMaterializer = ActorMaterializer()
+
+  def afterAll() = {
+    actorSystem.terminate() 
+    actorMaterializer.shutdown()
+  }
 
   val minimumNumberOfTests = 20
   import cats._, data._, implicits._, Validated._
@@ -106,7 +117,7 @@ class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
     val jobgraphCfg = JobgraphConfig("localhost", 8080)
-    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)(jobConfig.get)).awaitFor(500.millis)
+    runner.run(ctx)(manifest(wfId, jobId, jobgraphCfg)) must be_==(manifest(wfId, jobId, jobgraphCfg)(jobConfig.get)).awaitFor(500.millis)
   }
 
   def verifyCanRunPythonDataflowRunnerAndReturn = {
@@ -116,7 +127,7 @@ class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with
     val ctx = ExecContext(jobConfig.get)
     val runner = new DataflowRunner
     val jobgraphCfg = JobgraphConfig("localhost", 8080)
-    runner.run(ctx)(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)) must be_==(runtime.JobContextManifest.manifest(wfId, jobId, jobgraphCfg)(jobConfig.get)).awaitFor(500.millis)
+    runner.run(ctx)(manifest(wfId, jobId, jobgraphCfg)) must be_==(manifest(wfId, jobId, jobgraphCfg)(jobConfig.get)).awaitFor(500.millis)
   }
 
 }

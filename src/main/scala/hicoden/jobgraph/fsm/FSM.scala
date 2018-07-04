@@ -6,6 +6,7 @@ import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
 import hicoden.jobgraph.fsm.runners._
 import hicoden.jobgraph.fsm.runners.runtime._
 import akka.actor._
+import akka.stream.ActorMaterializer
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
@@ -59,10 +60,16 @@ case class Terminated(forced: Boolean = false) extends State
 // Data
 sealed trait Data
 case object Uninitialized extends Data
-case class Processing(wfId: WorkflowId, job: Job, engineRef: ActorRef, mesosConfig : Option[MesosConfig], jobgraphConfig: Option[JobgraphConfig]) extends Data
+case class Processing(wfId: WorkflowId,
+                      job: Job,
+                      engineRef: ActorRef,
+                      mesosConfig : Option[MesosConfig],
+                      jobgraphConfig: Option[JobgraphConfig]) extends Data
 
-class JobFSM extends LoggingFSM[State, Data] {
+class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
 
+  implicit val actorSystem = context.system
+  implicit val actorMaterializer = ActorMaterializer()
   implicit val googleDataflowDispatcher : ExecutionContext = context.system.dispatchers.lookup("dataflow-dispatcher")
 
   startWith(Idle, Uninitialized)
@@ -110,11 +117,11 @@ class JobFSM extends LoggingFSM[State, Data] {
         if (mCfg.enabled) {
           val ctx = MesosExecContext(job.config, mCfg)
           val runner = new MesosDataflowRunner
-          runner.run(ctx)(JobContextManifest.manifestMesos(wfId, job.id, mCfg, jgCfg))
+          runner.run(ctx)(manifestMesos(wfId, job.id, mCfg, jgCfg))
         } else {
           val ctx = ExecContext(job.config)
           val runner = new DataflowRunner
-          runner.run(ctx)(JobContextManifest.manifest(wfId, job.id, jgCfg))
+          runner.run(ctx)(manifest(wfId, job.id, jgCfg))
         }
       }
       stay
