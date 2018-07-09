@@ -11,9 +11,19 @@ package object cc {
 
   // These states are registered in the [[mesos.proto]] file of Apache Mesos
   // 1.6.0.
+  // Take note that 'TASK_NO_STATS_AVAIL' is to cater to the situation where
+  // ReST calls to a running Apache Mesos cluster is successful but no
+  // statistics data is returned (typical when the stats data is wiped out
+  // during a restart); 'TASK_UNREACHABLE_STATS' is to cater to the situation
+  // where we are unable to reach it (it could happen if the mesos cluster is
+  // down or unable to respond)
   object FrameworkStates extends Enumeration {
     type FrameworkState = Value
-    val TASK_STAGING, TASK_RUNNING, TASK_STARTING, TASK_KILLING, TASK_FINISHED, TASK_FAILED, TASK_KILLED, TASK_ERROR, TASK_LOST, TASK_DROPPED, TASK_UNREACHABLE, TASK_GONE, TASK_GONE_BY_OPERATOR, TASK_UNKNOWN = Value
+    val TASK_STAGING, TASK_RUNNING, TASK_STARTING,
+        TASK_KILLING, TASK_FINISHED, TASK_FAILED,
+        TASK_KILLED, TASK_ERROR, TASK_LOST, TASK_DROPPED,
+        TASK_UNREACHABLE, TASK_GONE, TASK_GONE_BY_OPERATOR, TASK_UNKNOWN,
+        TASK_NO_STATS_AVAIL, TASK_UNREACHABLE_STATS = Value
   }
 
   // Pure functions that examine the metric data in the JSON structure 

@@ -40,8 +40,10 @@ import cats._, cats.free._, data._, implicits._
 
 // Base trait where we consume a container of statistics and then decide how to
 // make a selection via `run` which returns None or Some(mesos-server-config)
+// When no data can be retrieved from either/all of the mesos computer clusters,
+// we resort to picking a compute cluster
 trait SchedulingAlgorithm {
-  def run : Reader[Map[ClusterMetrics, MesosRuntimeConfig], MesosRuntimeConfig]
+  def run(fallback: List[MesosRuntimeConfig]) : Reader[Map[ClusterMetrics, MesosRuntimeConfig], MesosRuntimeConfig]
 }
 
 //
@@ -68,9 +70,9 @@ object LRU extends SchedulingAlgorithm {
     pq.min._1.some
   }
 
-  def run : Reader[Map[ClusterMetrics, MesosRuntimeConfig], MesosRuntimeConfig] =
+  def run(fallback: List[MesosRuntimeConfig]) : Reader[Map[ClusterMetrics, MesosRuntimeConfig], MesosRuntimeConfig] =
     Reader{ (metricMap: Map[ClusterMetrics, MesosRuntimeConfig]) ⇒
-      val sentinel = MesosRuntimeConfig(enabled = false, runas = "hicoden", hostname = "localhost", hostport = 5050)
+      val sentinel = fallback.head
       if (metricMap.isEmpty) sentinel else
         leastBusyServer(for { (server, metrics) ← groupByCC(metricMap) } yield (server, detectBusyStates(metrics.keySet))).fold(sentinel)(identity)
     }
@@ -101,9 +103,9 @@ trait StatsMiner { self ⇒
       gatherStats(httpService)(timeout)(runtimeCfgs) match {
         case Left(error) ⇒
           logger.error(s"[Scheduler] Error in reading stats from compute cluster")
-          algo.run(collection.immutable.HashMap.empty[ClusterMetrics, MesosRuntimeConfig])
+          algo.run(runtimeCfgs)(collection.immutable.HashMap.empty[ClusterMetrics, MesosRuntimeConfig])
         case Right(metrics) ⇒
-          algo.run(metrics)
+          algo.run(runtimeCfgs)(metrics)
       }
     }
 
@@ -111,15 +113,23 @@ trait StatsMiner { self ⇒
     * Iterates through the configurations and for each of them; make a ReST call
     * to "mesos-host:mesos-port/tasks.json" and retrieve all the task information
     * registering any errors we might encounter.
+    *
+    * If the targeted mesos cluster has no stats data available, we inject a
+    * marker s.t. the scheduling algo would take that into account during the
+    * selection process.
+    *
     * @param clusterCfg
     * @return Left(error) or Right(container of payloads)
     */
   def gatherStats(httpService: HttpService)(implicit timeout : Duration) : Reader[List[MesosRuntimeConfig], Either[Exception, Map[ClusterMetrics, MesosRuntimeConfig]]] =
     Reader{ (clusterCfgs: List[MesosRuntimeConfig]) ⇒
       val m = collection.mutable.HashMap.empty[ClusterMetrics, MesosRuntimeConfig]
-      clusterCfgs.map( cCfg ⇒ gatherStat(httpService)(timeout)(cCfg).bifoldMap((e: Throwable) ⇒ logger.error(s"[Scheduler] Unable to retrieve statistics from : ${cCfg}"), {
+      clusterCfgs.map( cCfg ⇒ gatherStat(httpService)(timeout)(cCfg).bifoldMap((e: Throwable) ⇒ {m += (ClusterMetrics(java.util.UUID.randomUUID, FrameworkStates.TASK_UNREACHABLE_STATS) → cCfg); logger.error(s"[Scheduler] Unable to retrieve statistics from : ${cCfg}")}, {
         (cMetrics: List[ClusterMetrics]) ⇒
           cMetrics.map(c ⇒ m += (c → cCfg))
+          if ((m.values.toSet & Set(cCfg)) isEmpty) {
+            m += (ClusterMetrics(java.util.UUID.randomUUID, FrameworkStates.TASK_NO_STATS_AVAIL) → cCfg)
+          }
           logger.info(s"[Scheduler] Retrieved statistics from : ${cCfg}")
       }))
       m.toMap.asRight
@@ -157,7 +167,7 @@ trait StatsMiner { self ⇒
                 }, timeout - (5.seconds))
             case other @ HttpResponse(_, _, _, _) ⇒
               other.discardEntityBytes()
-              List(ClusterMetrics(null, FrameworkStates.TASK_UNKNOWN))// this sentinel represents an failure in the ReST request
+              List(ClusterMetrics(java.util.UUID.randomUUID, FrameworkStates.TASK_NO_STATS_AVAIL))// this sentinel represents an failure in the ReST request
           }
           Try{ Await.result(result, timeout) }.toEither
       }

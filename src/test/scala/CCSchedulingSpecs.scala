@@ -111,7 +111,7 @@ class CCSchedulingSpecs extends Specification with StatsMiner with AfterAll {
     (loadConfig[MesosConfig](CCSchedulerData.unreachableMesosCfg.head.getConfig("mesos")) : @unchecked )match {
       case Right(cfg) ⇒
         implicit val timeout : Duration = cfg.timeout.seconds
-        select(LRU)(timeout)(cfg) must be_==(MesosRuntimeConfig(false, "hicoden", "localhost", 5050))
+        select(LRU)(timeout)(cfg) must be_==(MesosRuntimeConfig(false, "hicoden", "10.148.0.4", 5050))
     }
   }
 
