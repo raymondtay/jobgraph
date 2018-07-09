@@ -1,3 +1,4 @@
+import org.scoverage.coveralls.Imports.CoverallsKeys._
 import Dependencies._
 
 // Settings
@@ -57,4 +58,6 @@ unmanagedClasspath           in Runtime += baseDirectory.value / "dataflow-scrip
 unmanagedResourceDirectories in Compile += baseDirectory.value / "scripts"
 unmanagedResourceDirectories in Test += baseDirectory.value / "src" / "test" / "scripts"
 unmanagedResourceDirectories in Tut += baseDirectory.value / "tut-scripts"
+
+coverallsToken := Some("6FbkmXztn0ntFMHTa0Gj7iu2BeA4elYkD")
 
