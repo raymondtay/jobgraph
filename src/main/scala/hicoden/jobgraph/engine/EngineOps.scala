@@ -65,11 +65,22 @@ trait EngineOps extends Concretizer {
     * Returns all workflows currently present in the system; pagination
     * mechanism would be implemented at a later stage.
     * @param wfdt
-    * @return a container where each value is a (k,v) pair
+    * @return a container where each value is a [[WorkflowConfig]] object
     */
   def getAllWorkflows : State[WorkflowDescriptorTable, List[WorkflowConfig]] =
     for {
       s ← State.get[WorkflowDescriptorTable]
+    } yield s.values.toList
+
+  /**
+    * Returns all job configurations currently present in the system; pagination
+    * mechanism would be implemented at a later stage.
+    * @param wfdt
+    * @return a container where each value is a [[JobConfig]] object
+    */
+  def getAllJobs : State[JobDescriptorTable, List[JobConfig]] =
+    for {
+      s ← State.get[JobDescriptorTable]
     } yield s.values.toList
 
   /**
@@ -83,6 +94,35 @@ trait EngineOps extends Concretizer {
   def extractWorkflowConfigBy(workflowIndex: Int)(implicit jdt : JobDescriptorTable, wfdt: WorkflowDescriptorTable) : Option[(List[LNode[Job,JobId]], List[LEdge[Job,String]])]= {
     if (wfdt.contains(workflowIndex)) reify(jdt)(wfdt(workflowIndex)).toOption
     else none
+  }
+
+  /**
+    * Validate the job submission means that we check for a few things
+    * - the job id must be distint from the rest since it is the same id that
+    *   is used to construct the workflow DAG
+    * - The dataflow must contain the right [[RunnerType]] [[ExecType]] pair
+    *   else it is consider illegal
+    * @param jobConfig
+    * @return Some(jobConfig) else none
+    */
+  def validateJobSubmission(implicit jdt: JobDescriptorTable) : Reader[JobConfig, Option[JobConfig]] =
+    Reader{ (jCfg: JobConfig) ⇒
+      if (isJobConfigPresent(jdt)(jCfg)) none else {
+        val splitted = jCfg.runner.runner.split(":")
+        if (splitted.size != 2) { logger.error(s"Runner configuration is invalid"); none }
+        else {
+          val (left, right) = (splitted(0), splitted(1))
+          (StepOps.validateRunnerType(left), StepOps.validateExecType(right)).mapN((r, e) ⇒
+            if (r == None || e == None) { logger.error(s"Runner / Exec type configuration is invalid"); none } else jCfg.some
+          )
+        }
+      }
+    }
+
+  // The JDT is a indexed structure; so a check is made to see if its already
+  // there - the user cannot override the configuration.
+  private def isJobConfigPresent(implicit jdt: JobDescriptorTable) = Reader{ (jCfg: JobConfig) ⇒
+    if (jdt.contains(jCfg.id)) true else false
   }
 
   /**
@@ -135,5 +175,23 @@ trait EngineOps extends Concretizer {
       s2 ← State.get[WorkflowDescriptorTable]
     } yield s2
   }
+
+  /**
+    * State function that adds the job configuration to the job
+    * descriptor table and returns this updated version.
+    * @param jobConfig
+    * @param jdt
+    * @return updated Job Descriptor Table
+    */
+  def addNewJob = Reader{ (jobConfig: JobConfig) ⇒
+    for {
+      s  ← State.get[JobDescriptorTable]
+      _  ← State.modify{(dt: JobDescriptorTable) ⇒
+             StepOps.hydrateJobConfigs(jobConfig :: Nil).runS(dt).value
+           }
+      s2 ← State.get[JobDescriptorTable]
+    } yield s2
+  }
+
 }
 

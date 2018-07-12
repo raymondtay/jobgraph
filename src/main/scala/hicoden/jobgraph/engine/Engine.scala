@@ -36,7 +36,9 @@ case class StopWorkflow(workflowId: WorkflowId)
 case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStates.States)
 case class SuperviseJob(workflowId: WorkflowId, jobId: JobId, googleDataflowId: String)
 case class ValidateWorkflowSubmission(wfConfig : WorkflowConfig)
+case class ValidateJobSubmission(jobConfig : JobConfig)
 case object WorkflowListing
+case object JobListing
 case class WorkflowRuntimeReport(workflowId: WorkflowId)
 
 
@@ -210,9 +212,25 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
           sender() ! Some(cfg.id)
       }
 
+    case ValidateJobSubmission(cfg) ⇒
+      validateJobSubmission(jdt)(cfg).fold{
+        logger.error(s"[Engine][Internal] Unable to validate the job submission: ${cfg}")
+        sender() ! none
+        }{
+          (jobCfg: JobConfig) ⇒
+            val current = jdt.size
+            jdt = addNewJob(jobCfg).runS(jdt).value
+            val newSize = jdt.size
+            logger.info(s"[Engine] job has been added to repository: $current -> $newSize")
+            logger.info(s"[Engine] job has been added to repository: $current -> $newSize")
+            sender() ! Some(jobCfg.id) 
+        }
+
     case WorkflowRuntimeReport(workflowId) ⇒ sender() ! getWorkflowStatus(workflowId)
 
     case WorkflowListing ⇒ sender() ! getAllWorkflows.runA(wfdt).value
+
+    case JobListing ⇒ sender() ! getAllJobs.runA(jdt).value
 
     case Terminated(child) ⇒
       val (xs, result) = removeFromLookup(child).run(workersToWfLookup).value
@@ -356,7 +374,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
 
 }
 
-object Engine extends App with JobCallbacks with WorkflowWebServices {
+object Engine extends App with JobCallbacks with WorkflowWebServices with JobWebServices {
   import akka.pattern.ask
   import akka.http.scaladsl.server.Directives._
   import scala.concurrent._, duration._
@@ -380,11 +398,12 @@ object Engine extends App with JobCallbacks with WorkflowWebServices {
   val engine = actorSystem.actorOf(Props(classOf[Engine], "jobs":: Nil, "workflows" :: Nil), "Engine")
 
   // start a job graph running
-  implicit val timeout = akka.util.Timeout(5 seconds)
-  val workflowId : WorkflowId = java.util.UUID.fromString(Await.result((engine ? StartWorkflow(0)).mapTo[String], timeout.duration))
+  // TODO: remove this in the next iteration
+  // implicit val timeout = akka.util.Timeout(5 seconds)
+  // val workflowId : WorkflowId = java.util.UUID.fromString(Await.result((engine ? StartWorkflow(0)).mapTo[String], timeout.duration))
 
   // Bind the engine to serve ReST
-  val bindingFuture = Http().bindAndHandle(JobCallbackRoutes ~ WorkflowWebServicesRoutes , "0.0.0.0")
+  val bindingFuture = Http().bindAndHandle(JobCallbackRoutes ~ WorkflowWebServicesRoutes ~ JobWebServicesRoutes, "0.0.0.0")
   println(s"Server online at http://0.0.0.0:9000/\nPress RETURN to stop...")
   scala.io.StdIn.readLine() // let it run until user presses return
   bindingFuture
@@ -394,7 +413,7 @@ object Engine extends App with JobCallbacks with WorkflowWebServices {
   Thread.sleep(waitTimeForAsyncProcessing)
 
   // stops the workflow aka "forced termination" of the jobgraph
-  engine ! StopWorkflow(workflowId)
+  //engine ! StopWorkflow(workflowId)
 
   Thread.sleep(waitTimeForCleanup)
 

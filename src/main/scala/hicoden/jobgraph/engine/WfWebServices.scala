@@ -66,7 +66,7 @@ trait WorkflowWebServices {
   // Prepares the http response object by injecting the given workflow index
   // into the payload.
   //
-  private[engine]
+  private
   def prepareGoodResponse = Reader{ (workflowId: Int) ⇒
     import io.circe.syntax._
     HttpEntity(`application/json`, s"""{"workflow_index" : ${workflowId}}""")
@@ -86,7 +86,7 @@ trait WorkflowWebServices {
   // Prepares the http response object by injecting the given error messages
   // into the payload.
   //
-  private[engine]
+  private
   def prepareBadResponse = Reader{ (messages: List[String]) ⇒
     import io.circe.syntax._
     HttpEntity(`application/json`, s"""{"errors" : ${messages.asJson}}""")
