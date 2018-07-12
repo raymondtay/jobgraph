@@ -7,18 +7,38 @@ This is an engine that allows you to do two things:
   it to a Apache Beam framework for execution
 - To do all that, you have to write jobs using Apache Beam's programming model
 - Craft a processing graph which details your execution dependency and submit
-  that to `jobgraph` and it takes care of executing the job for you.
+  that to `jobgraph` and it takes care of executing the job for
+  you;automatically monitors the job and starts the next dependencies once it
+  has completed.
 
 # Architecture
-## Production
-![Production Architecture](./imgs/architecture.png)
-## Sandbox
-![Sandbox Architecture](./imgs/sandbox.png)
+## Multi-tenant shared-compute Architecture
+What you see here is, potentially but fictitiously, 2 customers having their
+own jobs and workflows loaded and having their workload launched against any of
+the nodes in the 2 (shown) compute clusters (powered by Apache Mesos);
+asynchronously and concurrent.
+
+*Note:* Neither of the tenants (i.e. customers) know the existent of the other
+and they shouldn't know. This allows us, Nugit, to be grow/shrink/utilize all
+compute capacity of the computational power with a workload that is distributed throughout.
+
+A secondary advantage is to accelerate Machine Learning frameworks like Apache
+Spark, Google TensorFlow to deliver faster business results to the customers.
+
+![Proposed Production Architecture](./imgs/multi-tenant-shared-compute.png)
+## Single-tenant shared-compute Architecture
+
+What you see here is a proof-of-concept where a single customer's workflows
+will run asynchronously (concurrently as well) and simultaneously across 2 compute clusters (thereby
+spreading the work load).
+
+## Sandbox in the Google Cloud
+![Sandbox Architecture](./imgs/single-tenant-dedicated-compute.png)
 
 ## What do i need to know about JobGraph
 
 Basic idea is to provide a mechanism that allows the user to define:
-- What a _step_ is
+- What a _step_ (aka Job) is
   - That usually means a format has to be defined
   - A step is, for now, a `Apache Beam` job (i.e. runnable) and `jobgraph` is responsible for starting the job.
 - How to describe a _workflow_ by stringing 1 or more _steps_ 
@@ -54,4 +74,36 @@ A workflow is defined by the following (non-exhaustively):
 - Steps (a list of names which point to the steps currently in the system)
 - Job graph (a mechanism to describe how to execute the string of actions)
 
+## What can we do with JobGraph
 
+If you are the developer of `JobGraph` engine, you perform the following
+programmtically or via ReST calls.
+
+If you are the user of `JobGraph`, you can perform the following only via ReST
+calls.
+
+In either case, please refer to the confluence page [here](https://nugitco.atlassian.net/wiki/spaces/ND/pages/525303812/JobGraph+ReST+Interfaces)
+for more details.
+
+- Create a workflow
+- Start a workflow
+- Query a workflow (aka _monitoring workflow_)
+- List all workflows
+- Stop a workflow
+- Update a workflow
+- Create a job
+- List all job(s)
+- Monitor a Job (job ∈ Workflow)
+
+## Limitations of JobGraph
+
+- The workflows and jobs configuration does not survive a reboot
+- If your job is not a Apache Beam job, then `JobGraph` cannot automatically
+  monitor and manage the lifecycle of your workflow for you.
+- Workflows cannot be restarted
+- Workflows cannot be scheduled
+- Job parameters cannot be altered after you have created it; you need to
+  create another job.
+- 
+
+We will be plugging these soon.
