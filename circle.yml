@@ -1,38 +1,38 @@
-# Scala CircleCI 2.0 configuration file
-#
-# Check https://circleci.com/docs/2.0/sample-config/ for more details
-# Links:
-# + Java OOM errors [https://circleci.com/blog/how-to-handle-java-oom-errors/]
-#
-machine:
-  environment:
-    SBT_VERSION: 0.13.17
-    SBT_OPTS: "-Xms3072M -Xmx3072M -Xss1M -XX:+CMSClassUnloadingEnabled"
-    COVERALLS_REPO_TOKEN : epxO4zHVNvU9gbIfnfgXsqYRNuyWhw5GZ
-
-checkout:
-  pre:
-    - rm -fR ~/.sbt/1.0/staging/ # this is necessary to clear out outdated repos s.t. sbt can load fresh ones
-
-dependencies:
-  # Disabling circleci in picking up cached binaries
-  # cache_directories:
-  #   - "~/.sbt"
-  pre:
-    - wget --output-document=$HOME/bin/sbt-launch.jar
-      https://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/"$SBT_VERSION"/sbt-launch.jar
-    - echo "java $SBT_OPTS -jar \`dirname \$0\`/sbt-launch.jar \"\$@\""
-      > $HOME/bin/sbt
-    - chmod u+x $HOME/bin/sbt
-    - which sbt
-    - sbt sbtVersion    
-
-test:
-  override:
-    - sbt coverageOn clean test
-    - sbt coverageReport coveralls
-  post:
-    - mkdir -p $CIRCLE_ARTIFACTS/scala-2.12
-    - mv target/scala-2.12/coverage-report  $CIRCLE_ARTIFACTS/scala-2.12/coverage-report
-    - mv target/scala-2.12/scoverage-report $CIRCLE_ARTIFACTS/scala-2.12/scoverage-report
-
+version: 2
+jobs:
+  build:
+    working_directory: ~/nugit/jobgraph
+    parallelism: 1
+    shell: /bin/bash --login
+    environment:
+      CIRCLE_ARTIFACTS: /tmp/circleci-artifacts
+      CIRCLE_TEST_REPORTS: /tmp/circleci-test-results
+      SBT_VERSION: 0.13.17
+      SBT_OPTS: -Xms3072M -Xmx3072M -Xss1M -XX:+CMSClassUnloadingEnabled
+      COVERALLS_REPO_TOKEN: epxO4zHVNvU9gbIfnfgXsqYRNuyWhw5GZ
+    # In CircleCI 1.0 we used a pre-configured image with a large number of languages and other packages.
+    # In CircleCI 2.0 you can now specify your own image, or use one of our pre-configured images.
+    # The following configuration line tells CircleCI to use the specified docker image as the runtime environment for you job.
+    # We have selected a pre-built image that mirrors the build environment we use on
+    # the 1.0 platform, but we recommend you choose an image more tailored to the needs
+    # of each job. For more information on choosing an image (or alternatively using a
+    # VM instead of a container) see https://circleci.com/docs/2.0/executor-types/
+    # To see the list of pre-built images that CircleCI provides for most common languages see
+    # https://circleci.com/docs/2.0/circleci-images/
+    docker:
+    - image: circleci/openjdk:8-jdk-node
+    steps:
+    - checkout
+    - run: mkdir -p $CIRCLE_ARTIFACTS $CIRCLE_TEST_REPORTS
+    - run: /opt/sbt/bin/sbt coverageOn clean test
+    - run: /opt/sbt/bin/sbt coverageReport coveralls
+    - run: mkdir -p $CIRCLE_ARTIFACTS/scala-2.12
+    - run: mv target/scala-2.12/coverage-report  $CIRCLE_ARTIFACTS/scala-2.12/coverage-report
+    - run: mv target/scala-2.12/scoverage-report $CIRCLE_ARTIFACTS/scala-2.12/scoverage-report
+    - store_test_results:
+        path: /tmp/circleci-test-results
+    # Save artifacts
+    - store_artifacts:
+        path: /tmp/circleci-artifacts
+    - store_artifacts:
+        path: /tmp/circleci-test-results
