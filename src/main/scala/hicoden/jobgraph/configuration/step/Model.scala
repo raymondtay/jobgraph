@@ -23,7 +23,15 @@ package hicoden.jobgraph.configuration.step.model
   *
   */
 case class Runner(module: String, runner: String, cliargs: List[String])
-case class JobConfig(id : Int, name : String, description: String, workdir : String, sessionid : String, runner: Runner, inputs : List[String], outputs: List[String] )
+case class Restart(max : Int)
+case class JobConfig(id : Int,
+                     name : String,
+                     description: String,
+                     workdir : String,
+                     sessionid : String,
+                     restart : Restart,
+                     runner: Runner,
+                     inputs : List[String], outputs: List[String] )
 
 object RunnerType extends Enumeration {
   type RunnerType = Value

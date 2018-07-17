@@ -60,6 +60,10 @@ object RunnerData {
     cliargs ← genJavaCliArgs
   } yield Runner(module, runner, cliargs :: Nil)
 
+  def genRestartPolicy = for {
+    attempts ← choose(1, 5)
+  } yield Restart(attempts)
+
   def genPythonRunner = for {
     module  ← genPythonModule
     runner  ← genPythonRunnerType
@@ -72,7 +76,8 @@ object RunnerData {
     description ← alphaStr.suchThat(! _.isEmpty)
     sessionid   ← alphaStr.suchThat(! _.isEmpty)
     runner      ← genJavaRunner
-  } yield JobConfig(id, name, description, "target/scala-2.12", sessionid, runner, Nil, Nil)
+    restartPol  ← genRestartPolicy
+  } yield JobConfig(id, name, description, "target/scala-2.12", sessionid, restartPol, runner, Nil, Nil)
 
   def genPythonJobConfig = for {
     id          ← posNum[Int]
@@ -80,7 +85,8 @@ object RunnerData {
     description ← alphaStr.suchThat(! _.isEmpty)
     sessionid   ← alphaStr.suchThat(! _.isEmpty)
     runner      ← genPythonRunner
-  } yield JobConfig(id, name, description, "src/test/scripts", sessionid, runner, Nil, Nil)
+    restartPol  ← genRestartPolicy
+  } yield JobConfig(id, name, description, "src/test/scripts", sessionid, restartPol, runner, Nil, Nil)
 
 }
 

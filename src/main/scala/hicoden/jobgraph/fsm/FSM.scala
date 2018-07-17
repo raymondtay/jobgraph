@@ -1,11 +1,12 @@
 package hicoden.jobgraph.fsm
 
 import hicoden.jobgraph.{Job, JobId, JobStates, WorkflowId}
-import hicoden.jobgraph.engine.UpdateWorkflow
+import hicoden.jobgraph.engine.{UpdateWorkflow, DataflowFailure}
 import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
 import hicoden.jobgraph.fsm.runners._
 import hicoden.jobgraph.fsm.runners.runtime._
 import akka.actor._
+import akka.pattern._
 import akka.stream.ActorMaterializer
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
@@ -71,6 +72,10 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
   implicit val actorSystem = context.system
   implicit val actorMaterializer = ActorMaterializer()
   implicit val googleDataflowDispatcher : ExecutionContext = context.system.dispatchers.lookup("dataflow-dispatcher")
+  override val supervisorStrategy = 
+    OneForOneStrategy() {
+      case _: DataflowFailure ⇒ SupervisorStrategy.Escalate
+    }
 
   startWith(Idle, Uninitialized)
 
@@ -161,7 +166,8 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
     * Google Dataflow). The job's state is updated for the following states:
     * (a) JOB_STATE_DONE => normal completion
     * (b) JOB_STATE_CANCELLED => forced termination so job will reflect the same
-    * (c) everything else will mean it will continue to be monitored
+    * (c) JOB_STATE_FAILED => this job will be restarted
+    * (d) everything else will mean it will continue to be monitored
     * @param wfId
     * @param jobId
     * @param engineRef
@@ -170,7 +176,11 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
     * normally or Shutsdown
     */
   def decideToStopOrContinue(wfId: WorkflowId, jobId: JobId, engineRef: ActorRef, googleDataflowId: String) = Reader{ (result: (String,String,GoogleDataflowJobStatuses.GoogleDataflowJobStatus, String)) ⇒
-    if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_DONE) {
+    if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_FAILED) {
+      throw new DataflowFailure 
+      stop(FSM.Failure(s"Dataflow job: $jobId of workflow: $wfId has failed."))
+    }
+    else if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_DONE) {
       engineRef ! UpdateWorkflow(wfId, jobId, JobStates.finished)
       stop(FSM.Normal)
     }

@@ -1,7 +1,7 @@
 package hicoden.jobgraph.fsm
 
 import hicoden.jobgraph.Job
-import hicoden.jobgraph.configuration.step.model.{JobConfig, Runner}
+import hicoden.jobgraph.configuration.step.model.{JobConfig, Restart, Runner}
 
 
 import akka.actor._
@@ -189,6 +189,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
     val jobConfig =
       JobConfig(id = 42, name = "job-config-1", description = "",
         workdir = "", sessionid = "",
+        restart = Restart(3),
         runner = Runner(runner = "Dataflow:java", module = getClass.getClassLoader.getResource("fake_start_dataflow_job.sh").getPath.toString,
         cliargs = Nil), inputs = Nil, outputs = Nil)
 

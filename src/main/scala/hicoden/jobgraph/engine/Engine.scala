@@ -2,6 +2,7 @@ package hicoden.jobgraph.engine
 
 import hicoden.jobgraph._
 import akka.actor._
+import akka.pattern._
 import akka.routing.{ ActorRefRoutee, RoundRobinRoutingLogic, Router }
 import akka.stream.ActorMaterializer
 import akka.http.scaladsl.Http
@@ -96,6 +97,8 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
       _.some)
  
   }
+
+  override def preRestart(cause: Throwable, msg: Option[Any]) {}
 
   def receive : PartialFunction[Any, Unit] = {
 
@@ -346,15 +349,17 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     * job
     */
   def createWorkers : Reader[Set[Job], Set[(ActorRef, Job)]] = Reader{ (jobs: Set[Job]) ⇒
-    Set( Yoneda(jobs.toList).map( job ⇒ (lift[Id].run(createWorker(context)) >>= (worker ⇒ (watchWorker(worker, job)(context))))).run : _*)
+    Set( Yoneda(jobs.toList).map( job ⇒ (lift[Id].run(createWorker(job.config)(context)) >>= (worker ⇒ (watchWorker(worker, job)(context))))).run : _*)
   }
 
   /**
-    * Creates the actor using the context object
+    * Creates the asynchronous worker (associated with it is each job's restart
+    * strategy with a exponential back-off option)
     * @param ctx this actor's context
     * @return an actor of type [[JobFSM]]
     */
-  def createWorker = Reader{(ctx: ActorContext) ⇒ ctx.actorOf(Props(classOf[JobFSM]))}
+  def createWorker(jobConfig: JobConfig) =
+    Reader{(ctx: ActorContext) ⇒ ctx.actorOf(backoffOnFailureStrategy(Props(classOf[JobFSM]), s"JobFSM@${java.util.UUID.randomUUID}", jobConfig))}
 
   // Plain'ol lifting
   def lift[A[_] : Monad] = Reader{ (actor: ActorRef) ⇒ Monad[A].pure(actor) }
@@ -378,12 +383,6 @@ object Engine extends App with JobCallbacks with WorkflowWebServices with JobWeb
   import akka.pattern.ask
   import akka.http.scaladsl.server.Directives._
   import scala.concurrent._, duration._
-
-  /**
-    * With [[Props]], we can create all kinds of different [[Engine]] actors
-    * with various properties
-    */
-  def props : Props = Props(classOf[Engine])
 
   // Load all the properties of the engine e.g. size of thread pool, timeouts
   // for the various parts of the engine while processing.

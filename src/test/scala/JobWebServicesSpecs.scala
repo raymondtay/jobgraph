@@ -1,6 +1,6 @@
 package hicoden.jobgraph.engine
 
-import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig, RunnerType, ExecType}
+import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig, Restart, RunnerType, ExecType}
 
 import org.specs2.mutable.Specification
 import akka.http.scaladsl.model.StatusCodes
@@ -34,13 +34,18 @@ object JobConfigDummyData {
     execType ← oneOf("php", "exe")
   } yield Runner(module, s"$runner:$execType", Nil)
 
+  private def genRestartPolicy = for {
+    attempts ← choose(1, 5)
+  } yield Restart(attempts)
+
   val validJobConfigs : Gen[JobConfig] = for {
     name ← alphaStr
     description ← alphaStr
     workdir ← alphaStr
     sessionid ← alphaStr
     runner ← validRunner
-  } yield JobConfig(id = 33, name, description, workdir, sessionid, runner, Nil, Nil)
+    restart ← genRestartPolicy
+  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner, Nil, Nil)
 
   val validJobConfigs2 : Gen[JobConfig] = for {
     name ← alphaStr
@@ -48,7 +53,8 @@ object JobConfigDummyData {
     workdir ← alphaStr
     sessionid ← alphaStr
     runner ← validRunner
-  } yield JobConfig(id = 34, name, description, workdir, sessionid, runner, Nil, Nil)
+    restart ← genRestartPolicy
+  } yield JobConfig(id = 34, name, description, workdir, sessionid, restart, runner, Nil, Nil)
 
   val invalidJobConfigs3 : Gen[io.circe.Json] =
     oneOf(
@@ -71,7 +77,8 @@ object JobConfigDummyData {
     workdir ← alphaStr
     sessionid ← alphaStr
     runner ← validRunner
-  } yield JobConfig(id = 33, name, description, workdir, sessionid, runner, Nil, Nil)
+    restart ← genRestartPolicy
+  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner, Nil, Nil)
 
   private
   val jobConfigWithNonExistingIdInvalidRunner : Gen[JobConfig] = for {
@@ -80,7 +87,8 @@ object JobConfigDummyData {
     workdir ← alphaStr
     sessionid ← alphaStr
     runner ← invalidRunner
-  } yield JobConfig(id = 0, name, description, workdir, sessionid, runner, Nil, Nil)
+    restart ← genRestartPolicy
+  } yield JobConfig(id = 0, name, description, workdir, sessionid, restart, runner, Nil, Nil)
 
   val invalidJobConfigs = oneOf(jobConfigWithExistingId, jobConfigWithNonExistingIdInvalidRunner)
 }

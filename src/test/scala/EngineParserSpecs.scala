@@ -46,7 +46,7 @@ class EngineParserSpecs extends mutable.Specification with ScalaCheck with Parse
     import EngineParserData.arbValidMesosNamespaces
     "Valid namespace keys to load the Compute Cluster(s) configuration will result in success." >> prop { (ns: String) ⇒
       loadMesosDefaults(ns).toEither must beRight((cfg: MesosConfig) ⇒ {
-        cfg.enabled must be_==(true)
+        cfg.enabled must be_==(false)
         cfg.runas must be_==("hicoden")
       })
       loadMesosDefaults(ns).toList must not be empty

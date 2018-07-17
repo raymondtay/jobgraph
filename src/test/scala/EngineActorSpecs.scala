@@ -88,9 +88,8 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
 
       var runtimeWorkflowId : WorkflowId = null
       expectMsgPF(1 second){ case msg ⇒ runtimeWorkflowId = java.util.UUID.fromString(msg.asInstanceOf[String]) }
-      EventFilter.info(source = "akka://EngineActorSpecs/user/Engine-7/$i", pattern = "Stopping run", occurrences = 1).intercept {
-        engine ! StopWorkflow(runtimeWorkflowId)
-      }
+      engine ! StopWorkflow(runtimeWorkflowId)
+      expectNoMessage()
     }
 
   }

@@ -10,13 +10,14 @@ package hicoden.jobgraph.engine
 package object runtime {
 
   import hicoden.jobgraph.{JobStatus, WorkflowStatus}
-  import hicoden.jobgraph.configuration.step.model.{JobConfig, Runner}
+  import hicoden.jobgraph.configuration.step.model.{JobConfig, Restart, Runner}
   import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 
   import io.circe._, io.circe.generic.semiauto._, io.circe.syntax._
 
   implicit val jobConfigEncoder: Encoder[JobConfig] = deriveEncoder[JobConfig]
   implicit val runnerConfigEncoder: Encoder[Runner] = deriveEncoder[Runner]
+  implicit val restartConfigEncoder: Encoder[Restart] = deriveEncoder[Restart]
 
   implicit val jobStatusEncoder: Encoder[JobStatus] = new Encoder[JobStatus] {
     final
