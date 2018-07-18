@@ -12,6 +12,7 @@ package object runtime {
   import hicoden.jobgraph.cc.{LRU, StatsMiner}
   import cats._, data._, implicits._
   import hicoden.jobgraph.{JobId, WorkflowId}
+  import hicoden.jobgraph.cc.{HttpService, SchedulingAlgorithm, LRU}
   import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
   import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig}
   import akka.actor.ActorSystem
@@ -53,16 +54,20 @@ package object runtime {
                    jobId = jobId, location = JobEngineLocationContext(jgCfg.hostname, jgCfg.hostport),
                    runner = cfg.runner)
 
-    def manifestMesos(wfId: WorkflowId, jobId: JobId, mesosCfg: MesosConfig, jgCfg: JobgraphConfig) =
+    def manifestMesos(wfId: WorkflowId,
+                      jobId: JobId,
+                      mesosCfg: MesosConfig,
+                      jgCfg: JobgraphConfig,
+                      httpService : HttpService,
+                      selector: (SchedulingAlgorithm, HttpService) => Reader[MesosConfig, MesosRuntimeConfig])(implicit scheduler: SchedulingAlgorithm) =
       (cfg: JobConfig)⇒ {
-        implicit val mesosRequestTimeout : Duration = mesosCfg.timeout.seconds
         MesosJobContext(
           taskExec = "MesosScioJob",
           runAs = mesosCfg.runas,
           JobContext(name = cfg.name, description = cfg.description,
                    workdir = cfg.workdir, workflowId = wfId,
                    jobId = jobId, location = JobEngineLocationContext(jgCfg.hostname, jgCfg.hostport),
-                   runner = cfg.runner), select(LRU)(mesosRequestTimeout)(mesosCfg))
+                   runner = cfg.runner), selector(scheduler, httpService)(mesosCfg))
       }
  
   }

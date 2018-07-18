@@ -30,15 +30,16 @@ package object engine {
       Backoff.
         onFailure(childProps,
                   childName,
-                  minBackoff = 200 millis,
-                  maxBackoff = 10 seconds,
+                  minBackoff = 1 seconds,
+                  maxBackoff = 3 seconds,
                   randomFactor = 0.2).
+        withManualReset.
         withSupervisorStrategy(
           OneForOneStrategy(maxNrOfRetries = jobConfig.restart.max) {
             case _: NullPointerException         ⇒ SupervisorStrategy.Stop
             case _: DataflowRestartableException ⇒ SupervisorStrategy.Restart
             case x                               ⇒ SupervisorStrategy.Escalate
-      })
+        }).withReplyWhileStopped("The job is down.")
     BackoffSupervisor.props(options)
   }
 

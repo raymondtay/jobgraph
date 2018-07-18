@@ -1,5 +1,6 @@
 package hicoden.jobgraph.fsm
 
+import hicoden.jobgraph.cc.{LRU, RealHttpService}
 import hicoden.jobgraph.{Job, JobId, JobStates, WorkflowId}
 import hicoden.jobgraph.engine.{UpdateWorkflow, DataflowFailure}
 import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
@@ -67,7 +68,7 @@ case class Processing(wfId: WorkflowId,
                       mesosConfig : Option[MesosConfig],
                       jobgraphConfig: Option[JobgraphConfig]) extends Data
 
-class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
+class JobFSM extends LoggingFSM[State, Data] with JobContextManifest with JobFSMFunctions {
 
   implicit val actorSystem = context.system
   implicit val actorMaterializer = ActorMaterializer()
@@ -122,7 +123,8 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
         if (mCfg.enabled) {
           val ctx = MesosExecContext(job.config, mCfg)
           val runner = new MesosDataflowRunner
-          runner.run(ctx)(manifestMesos(wfId, job.id, mCfg, jgCfg))
+          implicit val mesosRequestTimeout : Duration = mCfg.timeout.seconds
+          runner.run(ctx)(manifestMesos(wfId, job.id, mCfg, jgCfg, new RealHttpService, select)(LRU))
         } else {
           val ctx = ExecContext(job.config)
           val runner = new DataflowRunner
@@ -137,7 +139,12 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
                                io.circe.Json.Null)
       val runner = new DataflowMonitorRunner
       GoogleDataflowFunctions.interpretJobResult(runner.run(ctx)(jsonParser.parse)).
-        fold(forcedStop(wfId, jobId, engineRef)(googleDataflowId))(decideToStopOrContinue(wfId, jobId, engineRef, googleDataflowId)(_))
+        fold(stop(forcedStop(wfId, jobId, engineRef)(googleDataflowId)))(
+          decideToStopOrContinue(wfId, jobId, engineRef, googleDataflowId)(_).fold{
+           setTimer("Monitor Job", MonitorRun(wfId, jobId, engineRef, googleDataflowId), timeout = 10 second)
+           stay
+          }(sideEffect ⇒ stop(sideEffect()))
+        )
 
 
     case Event(StateTimeout, Processing(wfId, job, engineRef, mesosCfg, jgCfg)) ⇒
@@ -145,6 +152,51 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
       engineRef ! UpdateWorkflow(wfId, job.id, JobStates.finished)
       stop(FSM.Shutdown)
 
+  }
+
+  initialize()
+}
+
+
+private[fsm]
+trait JobFSMFunctions {
+
+  /**
+    * Interprets the result (after parsing the JSON structure returned by
+    * Google Dataflow). The job's state is updated for the following states:
+    * (a) JOB_STATE_DONE => normal completion
+    * (b) JOB_STATE_CANCELLED => forced termination so job will reflect the same
+    * (c) JOB_STATE_FAILED => this job will be restarted
+    * (d) everything else will mean it will continue to be monitored
+    * @param wfId
+    * @param jobId
+    * @param engineRef
+    * @param googleDataflowId
+    * @return A side-effect which effectively translate (during runtime) to transition
+    *        to either (a) same state i.e. Active, (b) stops either normally or Shutsdown
+    */
+  def decideToStopOrContinue(wfId: WorkflowId, jobId: JobId, engineRef: ActorRef, googleDataflowId: String) : Reader[(String,String,GoogleDataflowJobStatuses.GoogleDataflowJobStatus,String), Option[() ⇒ FSM.Reason]] =
+    Reader{ (result: (String,String,GoogleDataflowJobStatuses.GoogleDataflowJobStatus, String)) ⇒
+      if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_FAILED) {
+        (() ⇒ {
+          throw new DataflowFailure
+          FSM.Failure(s"Dataflow job: $jobId of workflow: $wfId has failed.")
+        }).some
+      }
+      else if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_DONE) {
+        (() ⇒ {
+          engineRef ! UpdateWorkflow(wfId, jobId, JobStates.finished)
+          FSM.Normal
+        }).some
+      }
+      else if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_CANCELLED) {
+        (() ⇒ {
+          engineRef ! UpdateWorkflow(wfId, jobId, JobStates.forced_termination)
+          FSM.Shutdown
+        }).some
+      } else {
+        None
+      }
   }
 
   /**
@@ -158,41 +210,8 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest {
   def forcedStop(wfId: WorkflowId, jobId: JobId, engineRef: ActorRef) =
     Reader{ (googleDataflowId: String) ⇒
       engineRef ! UpdateWorkflow(wfId, jobId, JobStates.forced_termination)
-      stop(FSM.Failure(s"[FSM] could not parse the response from Google as Json for jobId: $googleDataflowId, forced abort."))
+      FSM.Failure(s"[FSM] could not parse the response from Google as Json for jobId: $googleDataflowId, forced abort.")
     }
 
-  /**
-    * Interprets the result (after parsing the JSON structure returned by
-    * Google Dataflow). The job's state is updated for the following states:
-    * (a) JOB_STATE_DONE => normal completion
-    * (b) JOB_STATE_CANCELLED => forced termination so job will reflect the same
-    * (c) JOB_STATE_FAILED => this job will be restarted
-    * (d) everything else will mean it will continue to be monitored
-    * @param wfId
-    * @param jobId
-    * @param engineRef
-    * @param googleDataflowId
-    * @return Transition to either (a) same state i.e. Active, (b) stops either
-    * normally or Shutsdown
-    */
-  def decideToStopOrContinue(wfId: WorkflowId, jobId: JobId, engineRef: ActorRef, googleDataflowId: String) = Reader{ (result: (String,String,GoogleDataflowJobStatuses.GoogleDataflowJobStatus, String)) ⇒
-    if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_FAILED) {
-      throw new DataflowFailure 
-      stop(FSM.Failure(s"Dataflow job: $jobId of workflow: $wfId has failed."))
-    }
-    else if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_DONE) {
-      engineRef ! UpdateWorkflow(wfId, jobId, JobStates.finished)
-      stop(FSM.Normal)
-    }
-    else if (result._3 equals GoogleDataflowJobStatuses.JOB_STATE_CANCELLED) {
-      engineRef ! UpdateWorkflow(wfId, jobId, JobStates.forced_termination)
-      stop(FSM.Shutdown)
-    } else {
-      setTimer("Monitor Job", MonitorRun(wfId, jobId, engineRef, googleDataflowId), timeout = 10 second)
-      stay
-    }
-  }
-
-  initialize()
 }
 
