@@ -9,9 +9,10 @@ import akka.http.scaladsl.Http
 import scala.language.{higherKinds, postfixOps}
 import scala.util._
 import scala.concurrent.duration._
+import hicoden.jobgraph.engine.runtime.jobOverridesDecoder
 import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
 import hicoden.jobgraph.configuration.step.model.JobConfig
-import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
+import hicoden.jobgraph.configuration.workflow.model.{WorkflowConfig, JobConfigOverrides, JobOverrides}
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
 import hicoden.jobgraph.fsm.{JobFSM, StartRun, StopRun, MonitorRun}
@@ -38,6 +39,7 @@ case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStat
 case class SuperviseJob(workflowId: WorkflowId, jobId: JobId, googleDataflowId: String)
 case class ValidateWorkflowSubmission(wfConfig : WorkflowConfig)
 case class ValidateJobSubmission(jobConfig : JobConfig)
+case class ValidateWorkflowJobOverrides(payload: io.circe.Json)
 case object WorkflowListing
 case object JobListing
 case class WorkflowRuntimeReport(workflowId: WorkflowId)
@@ -235,6 +237,12 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
 
     case JobListing ⇒ sender() ! getAllJobs.runA(jdt).value
 
+    case ValidateWorkflowJobOverrides(payload) ⇒
+      import io.circe.generic.auto._, io.circe.syntax._
+      val validationResult =
+        payload.as[JobConfigOverrides].bimap(decodingFailure ⇒ false, data ⇒ validateJobOverrides(jdt)(data).fold(false)(_ ⇒ true)).toOption
+      sender() ! validationResult
+      
     case Terminated(child) ⇒
       val (xs, result) = removeFromLookup(child).run(workersToWfLookup).value
       workersToWfLookup = xs

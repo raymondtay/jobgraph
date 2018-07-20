@@ -11,10 +11,25 @@ package object runtime {
 
   import hicoden.jobgraph.{JobStatus, WorkflowStatus}
   import hicoden.jobgraph.configuration.step.model.{JobConfig, Restart, Runner}
-  import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
+  import hicoden.jobgraph.configuration.workflow.model.{WorkflowConfig, JobConfigOverrides, JobOverrides}
 
-  import io.circe._, io.circe.generic.semiauto._, io.circe.syntax._
+  import cats._, data._, implicits._
+  import io.circe._, io.circe.generic.semiauto._, io.circe.parser._, io.circe.syntax._
 
+  // one or more of the fields can be omitted with the exception of the field
+  // `id`.
+  implicit val jobOverridesDecoder : Decoder[JobOverrides] = new Decoder[JobOverrides] {
+    final def apply(c: HCursor) : Decoder.Result[JobOverrides] = for {
+      id            ← c.downField("id").as[Int]
+      description   ← c.getOrElse("description")(none[String])
+      workdir       ← c.getOrElse("workdir")(none[String])
+      sessionid     ← c.getOrElse("sessionid")(none[String])
+      runnerRunner  ← c.getOrElse("runnerRunner")(none[String])
+      runnerCliargs ← c.getOrElse("runnerCliArgs")(none[List[String]])
+    } yield JobOverrides(id, description, workdir, sessionid, runnerRunner, runnerCliargs)
+  }
+
+  //implicit val jobConfigOverridesDecoder
   implicit val jobConfigEncoder: Encoder[JobConfig] = deriveEncoder[JobConfig]
   implicit val runnerConfigEncoder: Encoder[Runner] = deriveEncoder[Runner]
   implicit val restartConfigEncoder: Encoder[Restart] = deriveEncoder[Restart]

@@ -23,6 +23,7 @@ import quiver._
 trait EngineOps extends Concretizer {
 
   import cats._, data._, implicits._
+  import hicoden.jobgraph.engine.runtime._
 
   import WorkflowOps._
   object StepOps extends StepParser with StepLoader
@@ -34,7 +35,7 @@ trait EngineOps extends Concretizer {
     * @returns Left(validation errors) or Right(MesosConfig)
     */
   def loadMesosConfig = EngineCfgParser.loadMesosDefaults("mesos")
- 
+
   /**
     * Loads the Jobgraph engine's Config
     * @returns Left(validation errors) or Right(JobgraphConfig)
@@ -60,6 +61,31 @@ trait EngineOps extends Concretizer {
 
     (jdt, wfdt)
   }
+
+  /**
+    * The primary validation scheme here would be to make sure the runners
+    * indicated is legal and the job ids indicated in the payload do exist in
+    * our current system configuration; it doesn't make much sense to validate
+    * the rest of the overrides because they are context-dependent i.e. only
+    * the job that needs these overrides would know exactly what to do with it.
+    *
+    * CAUTION: as the job descriptor table is not concurrent safe, which means
+    * there is a chance that we might report missing job entries in the system
+    * @param overrides
+    * @return Left(validation-failure) or Right(true)
+    */
+  def validateJobOverrides(jdt: JobDescriptorTable) : Reader[JobConfigOverrides, Option[List[Int]]] =
+    Reader{ (overrides:JobConfigOverrides) ⇒
+      if (jdt.isEmpty) none
+      else {
+        val incoming = Set(overrides.overrides.collect{ case c => c.id }:_*)
+        val intersect = jdt.keySet & incoming
+
+        if (intersect.isEmpty) none // absolutely nothing in common
+        else if ((intersect & incoming) == intersect) incoming.toList.some // everything indicated is there
+        else none // accounts for everything else
+      }
+    }
 
   /**
     * Returns all workflows currently present in the system; pagination
@@ -98,8 +124,8 @@ trait EngineOps extends Concretizer {
 
   /**
     * Validate the job submission means that we check for a few things
-    * - the job id must be distint from the rest since it is the same id that
-    *   is used to construct the workflow DAG
+    * - The job id must be distinct from the rest since it is the same id that
+    *   is used to reference the job in the workflow DAG
     * - The dataflow must contain the right [[RunnerType]] [[ExecType]] pair
     *   else it is consider illegal
     * @param jobConfig

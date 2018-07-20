@@ -307,6 +307,64 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
 
   }
 
+  "When starting a workflow" in {
+
+    "the Engine will not validate the job overrides if the payload does not conform to the expected format" in {
+      val payload = s"""{}"""
+      val fakeWorkflowId = 42
+      Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual BadRequest
+        mediaType shouldEqual `application/json`
+        responseAs[io.circe.Json] shouldEqual parse(s"""{"errors":["Requested job overrides failed upon validation"]}""").getOrElse(Json.Null)
+      }
+    }
+
+    "the Engine will refuse to start a workflow (when the referred index is invalid), when the overrides payload is valid JSON format but the options described is invalid" in {
+      val payload = s"""{"overrides":[1]}"""
+      val fakeWorkflowId = 0
+      Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual BadRequest
+        mediaType shouldEqual `application/json`
+        responseAs[io.circe.Json] shouldEqual parse(s"""{"errors":["Requested job overrides failed upon validation"]}""").getOrElse(Json.Null)
+      }
+    }
+
+    "the Engine will start a workflow (when the referred index is valid), when the overrides payload is valid JSON format but no options are described" in {
+      val payload = s"""{"overrides":[]}"""
+      val fakeWorkflowId = 0
+      import io.circe.optics.JsonPath._
+      val checker = root.workflow_id.string
+      Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual OK
+        mediaType shouldEqual `application/json`
+        val j = responseAs[io.circe.Json]
+        checker.getOption(j) must beSome // the runtime workflow id (which is a UUID-like string) is returned
+      }
+    }
+
+    "the Engine will start a workflow (referred index exists) when the overrides payload is absent." in {
+      val workflowId = 0
+      Put(s"/flows/$workflowId/start") ~> WorkflowWebServicesRoutes ~> check {
+        import io.circe.optics.JsonPath._
+        val checker = root.workflow_id.string
+        status shouldEqual OK
+        val j = responseAs[io.circe.Json]
+        checker.getOption(j) must beSome // the runtime workflow id (which is a UUID-like string) is returned
+      }
+    }
+
+    "the Engine will refuse to start a workflow (referred index ∉ existing indices) even if the job overrides is (a) valid JSON; (b) job id exists; (c) overrides check out OK" in {
+      val payload = s"""{"overrides":[{"id":0, "description":"A test description"}]}""" // simulates the payload from an http client
+      val fakeWorkflowId = 9
+      Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual BadRequest
+        mediaType shouldEqual `application/json`
+        responseAs[io.circe.Json] shouldEqual parse(s"""{"errors":["No such workflow index/id found: $fakeWorkflowId"]}""").getOrElse(Json.Null)
+      }
+    }
+
+  }
+
 }
 
 

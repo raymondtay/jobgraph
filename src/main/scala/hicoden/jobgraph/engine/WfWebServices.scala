@@ -1,7 +1,7 @@
 package hicoden.jobgraph.engine
 
 import hicoden.jobgraph.{JobStatus, WorkflowStatus, Workflow}
-import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
+import hicoden.jobgraph.configuration.workflow.model.{WorkflowConfig, JobOverrides, JobConfigOverrides}
 
 import java.util.UUID
 
@@ -115,11 +115,67 @@ trait WorkflowWebServices {
   private[engine]
   def parseAsWorkflowIndex = Reader{ (s: String) ⇒ scala.util.Try{s.toInt}.toOption }
 
+  private[engine]
+  def extractJobOverrides = Reader{ (req: RequestContext) ⇒
+    Either.catchNonFatal{ req.request.entity.dataBytes.runFold(akka.util.ByteString(""))(_ ++ _) }
+  }
+
+  def validateJobOverrides(implicit timeout: akka.util.Timeout) = Reader{ (data: String) ⇒
+    import io.circe._, parser._, syntax._
+    parse(data).getOrElse(Json.Null) match {
+      case Json.Null ⇒ none
+      case json ⇒
+        Either.catchNonFatal{Await.result( (engine ? ValidateWorkflowJobOverrides(json)).mapTo[Option[Boolean]], timeout.duration)}.toOption.flatten
+    }
+  }
+
+  // Capture the runtime exception and include the actual details of the
+  // message in the response back to client.
+  def whenFailureToExtractFromStream(req: RequestContext) =
+    Reader{ (t: Throwable) ⇒
+      complete(StatusCodes.InternalServerError, prepareBadResponse(s"Unable to extract data from Http stream - this is a biggy"::t.getMessage::Nil))(req)
+    }
+
+  // Extraction from the data stream is ok (take note that an empty string from
+  // the data stream also means)
+  def whenExtractionFromStreamOK(someIndex: String, req: RequestContext)(implicit timeout : akka.util.Timeout) : Reader[Future[akka.util.ByteString], Future[akka.http.scaladsl.server.RouteResult]] =
+    Reader{ (d: Future[akka.util.ByteString]) ⇒
+      val data = Await.result(d.mapTo[akka.util.ByteString], timeout.duration)
+
+      // if the data is empty, its interpreted to mean that you want the
+      // defaults and the validation of the workflow begins .. otherwise
+      // we shall validate against the engine to determine whether
+      // (a) JSON is valid format
+      // (b) JSON properties is OK
+      if (data.utf8String.isEmpty) validateStartWorkflowRequest(someIndex).run(req) else
+      validateJobOverrides(timeout)(data.utf8String).fold(
+        complete(StatusCodes.BadRequest, prepareBadResponse(s"Requested job overrides failed upon validation"::Nil))(req)
+      )(result ⇒ {println(s"RESULT ----> $result");validateStartWorkflowRequest(someIndex).run(req)})
+    }
+
+  def validateStartWorkflowRequest(someIndex: String)(implicit timeout: akka.util.Timeout) =
+    Reader { (req: RequestContext) ⇒
+      parseAsWorkflowIndex(someIndex).fold(
+        complete(StatusCodes.BadRequest, prepareBadResponse("A workflow index should be some number"::Nil))
+      ){anIndex ⇒
+        Await.result((engine ? StartWorkflow(anIndex)).mapTo[String], timeout.duration) match {
+          case "No such id" ⇒ complete(StatusCodes.BadRequest, prepareBadResponse(s"No such workflow index/id found: $anIndex"::Nil))
+          case workflowId ⇒ complete(prepareWorkflowResponse(workflowId))
+        }
+      }(req)
+    }
+
   /**
     * A central routes configuration which carries the handlers of the routes;
     * the following are supported:
     * (a) Creating a workflow
     * (b) Starting a workflow
+    *   (b.1) If you pass in a valid JSON payload to alter the runtime behavior
+    *   of the job; then the job will be run with that
+    *   (b.2) If you pass no other payload, then it would be interpreted to
+    *   mean the jobs are run with their defaults, as installed.
+    *   (b.3) If you pass a a valid JSON payload but fails the validation, then
+    *   you will not be able to start the workflow at all.
     * (c) Listing all workflows
     * (d) Querying the status of the workflow in question
     *
@@ -144,16 +200,12 @@ trait WorkflowWebServices {
     } ~
     put {
       path("flows" / Segment / "start"){ someIndex ⇒
-        decodeRequest{
-          parseAsWorkflowIndex(someIndex).fold(
-            complete(StatusCodes.BadRequest, prepareBadResponse("A workflow index should be some number"::Nil))
-          ){anIndex ⇒
-            implicit val startWfTimeout : akka.util.Timeout = 3.seconds
-            Await.result((engine ? StartWorkflow(anIndex)).mapTo[String], startWfTimeout.duration) match {
-              case "no such id" ⇒ complete(StatusCodes.BadRequest, prepareBadResponse(s"No such workflow index id found: $anIndex"::Nil))
-              case workflowId ⇒ complete(prepareWorkflowResponse(workflowId))
-            }
-          }
+        decodeRequest{ (req: RequestContext) ⇒
+          implicit val timeToExtractDataNValidateWithEngine : akka.util.Timeout = 6.seconds
+          extractJobOverrides(req).fold(
+            whenFailureToExtractFromStream(req).run,
+            whenExtractionFromStreamOK(someIndex, req).run
+          )
         }
       }
     } ~
