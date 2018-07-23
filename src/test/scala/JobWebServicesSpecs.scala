@@ -3,8 +3,9 @@ package hicoden.jobgraph.engine
 import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig, Restart, RunnerType, ExecType}
 
 import org.specs2.mutable.Specification
+import akka.testkit._ // for the 'dilated' method
 import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.testkit.Specs2RouteTest
+import akka.http.scaladsl.testkit.{RouteTestTimeout, Specs2RouteTest}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.unmarshalling.Unmarshaller
 import akka.http.scaladsl.model.MediaTypes.{`text/plain`, `application/json`}
@@ -150,6 +151,7 @@ class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWeb
   val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::"jobs4"::Nil, "workflows"::Nil))
 
   sequential // all specifications are run sequentially
+  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated) // need to dilate time on slower build systems.
 
   "When creating a job in the system" in {
 

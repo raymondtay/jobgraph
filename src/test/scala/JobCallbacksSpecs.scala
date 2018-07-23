@@ -2,7 +2,8 @@ package hicoden.jobgraph.engine
 
 import org.specs2.mutable.Specification
 import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.testkit.Specs2RouteTest
+import akka.http.scaladsl.testkit.{RouteTestTimeout, Specs2RouteTest}
+import akka.testkit._ // for the 'dilated' method
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.MediaTypes.`application/json`
 import akka.http.scaladsl.server._
@@ -21,6 +22,7 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
   val actorMaterializer = materializer
 
   sequential // all specifications are run sequentially
+  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
 
   // engine is given a null value because we want to simulate the absense of
   // the engine
@@ -84,6 +86,7 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
   val actorMaterializer = materializer
 
   sequential // all specifications are run sequentially
+  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
 
   // engine is given a reference to the [[Echo]] actor here because we want to
   // capture the callbacks.

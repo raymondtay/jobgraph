@@ -4,7 +4,8 @@ import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 
 import org.specs2.mutable.Specification
 import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.testkit.Specs2RouteTest
+import akka.testkit._ // for the 'dilated' method
+import akka.http.scaladsl.testkit.{RouteTestTimeout, Specs2RouteTest}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.unmarshalling.Unmarshaller
 import akka.http.scaladsl.model.MediaTypes.{`text/plain`, `application/json`}
@@ -101,6 +102,7 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
   val actorMaterializer = materializer
 
   sequential
+  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces, but
   // notice that no workflows are loaded statically.
@@ -136,6 +138,7 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
   val actorMaterializer = materializer
 
   sequential
+  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces
   val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))

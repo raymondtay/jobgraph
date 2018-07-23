@@ -138,7 +138,7 @@ object EngineStateOpsProps extends Properties("EngineState") with EngineStateOps
       workflows2.contains(workflowId2) == true
     }
   }
- 
+
   {
     import EngineStateOpsData.arbEmptyWfStorageGenerator
     property("When repeated additions and removals is applied to the state in a specific order, inspection of the workflow ADT will be consistent.") = forAll{ (activeWorkflow: WFA) ⇒
