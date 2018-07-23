@@ -28,7 +28,7 @@ class DataflowMonitorRunnerSpecs extends Specification with ScalaCheck {
     val result = runner.run(ctx)((x: String) ⇒ x.trim)
     result.returns must beEqualTo(fakeJobId)
   }
-  
+
   def verifyCanRunDataflowRunnerAndReturnAsJson = {
     import hicoden.jobgraph.fsm._, runners._
     val fakeJobId = "TEST12334341241351241241243213213123213123"

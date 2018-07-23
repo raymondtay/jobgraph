@@ -19,8 +19,8 @@ class ExistentMesos extends HttpService {
   import cats.data.Kleisli, cats.implicits._
   import ContentTypes._
   import scala.concurrent.Future
-  override def makeSingleRequest(implicit actorSystem: ActorSystem, akkaMat: ActorMaterializer) = Kleisli{ 
-    (_uri: String) ⇒ 
+  override def makeSingleRequest(implicit actorSystem: ActorSystem, akkaMat: ActorMaterializer) = Kleisli{
+    (_uri: String) ⇒
       val jsonData = """
       {"tasks":[
          {"id":"95dd62d1-e10c-4ed4-b88b-d94ab3af8b1d", "state" : "TASK_RUNNING"}
@@ -38,8 +38,8 @@ class SimulateTwoExistentMesos extends HttpService {
   import ContentTypes._
   import scala.concurrent.Future
   var state = 0
-  override def makeSingleRequest(implicit actorSystem: ActorSystem, akkaMat: ActorMaterializer) = Kleisli{ 
-    (_uri: String) ⇒ 
+  override def makeSingleRequest(implicit actorSystem: ActorSystem, akkaMat: ActorMaterializer) = Kleisli{
+    (_uri: String) ⇒
       val jsonData =
       if (state == 0)
         """
@@ -54,7 +54,7 @@ class SimulateTwoExistentMesos extends HttpService {
            {"id":"99dd62d1-e10c-4ed4-b88b-d97ab3af8b1d", "state" : "TASK_RUNNING"}
          ]}
         """
- 
+
     Future.successful(
       HttpResponse(entity = HttpEntity(`application/json`, jsonData))
     )
@@ -138,5 +138,5 @@ class CCSchedulingSpecs extends Specification with StatsMiner with AfterAll {
     actorSystem.terminate() 
     actorMaterializer.shutdown()
   }
- 
+
 }

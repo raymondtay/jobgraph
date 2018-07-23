@@ -37,5 +37,5 @@ class DataflowJobTerminationRunnerSpecs extends Specification with ScalaCheck {
     val result = runner.run(ctx)((x: String) ⇒ x.trim)
     result.returns.head must startWith(s"Failed to cancel job [$fakeJobId]")
   }
-  
+
 }

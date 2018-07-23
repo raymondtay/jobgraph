@@ -20,6 +20,8 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
   val actorSystem = system
   val actorMaterializer = materializer
 
+  sequential // all specifications are run sequentially
+
   // engine is given a null value because we want to simulate the absense of
   // the engine
   val engine = akka.actor.Actor.noSender
@@ -80,6 +82,8 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
 
   val actorSystem = system
   val actorMaterializer = materializer
+
+  sequential // all specifications are run sequentially
 
   // engine is given a reference to the [[Echo]] actor here because we want to
   // capture the callbacks.

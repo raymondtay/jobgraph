@@ -149,6 +149,8 @@ class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWeb
 
   val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::"jobs4"::Nil, "workflows"::Nil))
 
+  sequential // all specifications are run sequentially
+
   "When creating a job in the system" in {
 
     // Job validation, atm, is merely checking whether the id was previously

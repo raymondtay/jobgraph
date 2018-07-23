@@ -100,6 +100,8 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
   val actorSystem = system
   val actorMaterializer = materializer
 
+  sequential
+
   // `engine` here loads all the jobs defined in the "jobs" namespaces, but
   // notice that no workflows are loaded statically.
   val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::Nil, Nil))
@@ -132,6 +134,8 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
 
   val actorSystem = system
   val actorMaterializer = materializer
+
+  sequential
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces
   val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))
