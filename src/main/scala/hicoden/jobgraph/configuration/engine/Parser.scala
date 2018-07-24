@@ -50,6 +50,13 @@ trait Parser {
       }
     }
 
+  def loadEngineDb : Reader[String, LoadingResult[JobgraphDb]] = 
+    Reader{ (namespace: String) ⇒
+      Try{ loadConfigOrThrow[JobgraphDb](namespace) }.toOption match {
+        case Some(cfg) ⇒ cfg.validNel
+        case None ⇒ LoadFailure(namespace).invalidNel
+      }
+    }
 }
 
 /*

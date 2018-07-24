@@ -16,7 +16,15 @@ package hicoden.jobgraph.configuration.engine.model
   *   hostport : ${?JOBGRAPH_PORT}
   * }
   *
+  * jobgraph.db {
+  *   driver : "org.postgresql.Driver"
+  *   name : "jobgraph",
+  *   username : "postgres",
+  *   password : "password"
+  * }
+  *
   */
 case class MesosConfig(enabled: Boolean, timeout : Int, runas: String, uris: List[String])
 case class JobgraphConfig(hostname : String, hostport : Int)
+case class JobgraphDb(driver: String, name : String, username: String, password: String)
 
