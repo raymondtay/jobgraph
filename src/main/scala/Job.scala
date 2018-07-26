@@ -1,5 +1,6 @@
 package hicoden.jobgraph
 
+import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 import hicoden.jobgraph.configuration.step.model.JobConfig
 
 import quiver.{Graph ⇒ QGraph, LNode, LEdge, mkGraph}
@@ -40,18 +41,15 @@ sealed trait Step {
   private[jobgraph] var state = JobStates.inactive
 }
 
-case class Workflow(jobgraph: QGraph[Job,UUID,String]) extends Step {
+case class Workflow(jobgraph: QGraph[Job,UUID,String], config: WorkflowConfig = null) {
   private[jobgraph] val create_timestamp : java.time.Instant = Instant.now()
   private[jobgraph] val status : WorkflowStates.States = WorkflowStates.not_started
   private[jobgraph] val id : WorkflowId = UUID.randomUUID
 }
 
-//
-// TODO: Attributes ???? Need'em ?
-//
 case class Job(name: String, config: JobConfig = null) extends Step {
   private[jobgraph] val create_timestamp : java.time.Instant = Instant.now()
-  private[jobgraph] val id : JobId = UUID.randomUUID
+  val id : JobId = UUID.randomUUID
 }
 
 trait WorkflowImplicits {

@@ -111,7 +111,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
         "No such id"
         }{
           (nodeEdges) ⇒
-            val jobGraph = createWf(nodeEdges._1)(nodeEdges._2)
+            val jobGraph = createWf(nodeEdges._1)(nodeEdges._2) >>= ((workflow: Workflow) ⇒ workflow.copy(config = wfdt(workflowId)))
             logger.debug("[Engine] Received a job graph id:{}", jobGraph.id)
             val workers = startWorkflow(jobGraph.id).fold(Set.empty[(ActorRef, Job)])(createWorkers(_))
             if (workers.isEmpty) {
