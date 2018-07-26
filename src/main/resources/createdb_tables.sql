@@ -59,7 +59,52 @@ CREATE TABLE IF NOT EXISTS job_template (
   runner Runner NOT NULL
 );
 
+-- see [[WorkflowStates]] for the in-memory model mapping
+CREATE TYPE WorkflowStates as ENUM(
+  'started',
+  'not_started',
+  'done'
+);
+
+-- see [[JobStates]] for the in-memory model mapping
+CREATE TYPE JobStates as ENUM(
+  'inactive',
+  'start',
+  'active',
+  'forced_termination',
+  'finished'
+);
+
+CREATE TYPE JobConfigRT as (
+  name text,
+  description text,
+  sessionid text,
+  restart integer,
+  runner Runner
+);
+
+-- The job_rt and workflow_rt represents the runtime representation of the jobs
+-- and workflows
+CREATE TABLE IF NOT EXISTS job_rt (
+  id UUID PRIMARY KEY,
+  job_template_id integer NOT NULL references job_template(id),
+  config JobConfigRT NOT NULL,
+  status JobStates NOT NULL
+);
+
+-- Waiting for the '[] ELEMENT REFERENCES <table>' to be realized in PSQL 10.+
+CREATE TABLE IF NOT EXISTS workflow_rt (
+  id serial PRIMARY KEY,
+  wf_id UUID NOT NULL,
+  wf_template_id integer NOT NULL references workflow_template(id),
+  status WorkflowStates NOT NULL,
+  job_id UUID[] NOT NULL
+);
+
 -- bring back the control to jobgraphadmin
 ALTER TABLE workflow_template OWNER TO jobgraphadmin;
 ALTER TABLE job_template OWNER TO jobgraphadmin;
+ALTER TABLE job_rt OWNER TO jobgraphadmin;
+ALTER TABLE workflow_rt OWNER TO jobgraphadmin;
+
 

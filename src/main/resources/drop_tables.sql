@@ -2,10 +2,14 @@
 -- except the user. See [[db.sql]] for more details.
 \c jobgraph
 ALTER TABLE workflow_template OWNER TO postgres;
-ALTER TABLE job_template OWNER TO postgres;
+ALTER TABLE job_template      OWNER TO postgres;
+ALTER TABLE job_rt            OWNER TO postgres;
+ALTER TABLE workflow_rt       OWNER TO postgres;
 
-DROP TABLE IF EXISTS job_template;
-DROP TABLE IF EXISTS workflow_template;
+DROP TABLE IF EXISTS workflow_rt       CASCADE;
+DROP TABLE IF EXISTS job_rt            CASCADE;
+DROP TABLE IF EXISTS job_template      CASCADE;
+DROP TABLE IF EXISTS workflow_template CASCADE;
 
 -- According to postgresql docs, we cannot drop a currently or "open" 
 -- database; the solution is to enter as the superuser e.g. postgres and
