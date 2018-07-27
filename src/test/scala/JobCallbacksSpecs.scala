@@ -22,7 +22,7 @@ class JobCallbacksSpecs extends Specification with Specs2RouteTest with JobCallb
   val actorMaterializer = materializer
 
   sequential // all specifications are run sequentially
-  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
+  implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated)
 
   // engine is given a null value because we want to simulate the absense of
   // the engine
@@ -86,7 +86,7 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
   val actorMaterializer = materializer
 
   sequential // all specifications are run sequentially
-  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
+  implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated)
 
   // engine is given a reference to the [[Echo]] actor here because we want to
   // capture the callbacks.

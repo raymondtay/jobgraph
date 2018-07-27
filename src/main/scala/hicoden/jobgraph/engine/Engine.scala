@@ -9,6 +9,7 @@ import akka.http.scaladsl.Http
 import scala.language.{higherKinds, postfixOps}
 import scala.util._
 import scala.concurrent.duration._
+import hicoden.jobgraph.engine.persistence.Transactors
 import hicoden.jobgraph.engine.runtime.jobOverridesDecoder
 import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
 import hicoden.jobgraph.configuration.step.model.JobConfig
@@ -56,6 +57,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
   import cats._, data._, implicits._
   import cats.free._
   import WorkflowOps._
+  import doobie._, doobie.implicits._
 
   // TODO:
   // (a) ADTs should be accessible from any node in the cluster that's right we
@@ -79,10 +81,17 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
   private[this] var mesosConfig : Option[MesosConfig] = none
   private[this] var jobgraphConfig : Option[JobgraphConfig] = none
 
+  /**
+    * When the Engine starts up, it would attempt to load the job and workflow
+    * definitions (housed in their respective configuration files i.e.
+    * application.conf) and inject the same data into their respective
+    * configuration tables (see [[workflow_template]] and [[job_template]]) -
+    * You should ever do this just once.
+    */
   override def preStart() = {
-    val (_jdt, _wfdt) = prepareDescriptorTables(jobNamespaces, workflowNamespaces)
-    jdt  = _jdt
-    wfdt = _wfdt
+    for { (l,r) <- prepareDescriptorTables(jobNamespaces, workflowNamespaces) :: Nil } { jdt = l; wfdt = r }
+
+    //(fillDatabaseWorkflowConfigs(wfdt) *> fillDatabaseJobConfigs(jdt)).transact(Transactors.xa).unsafeRunSync
     mesosConfig =
       loadMesosConfig.fold(
         errors ⇒
@@ -111,7 +120,7 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
         "No such id"
         }{
           (nodeEdges) ⇒
-            val jobGraph = createWf(nodeEdges._1)(nodeEdges._2) >>= ((workflow: Workflow) ⇒ workflow.copy(config = wfdt(workflowId)))
+            val jobGraph = createWf(wfdt.get(workflowId), nodeEdges._1)(nodeEdges._2)
             logger.debug("[Engine] Received a job graph id:{}", jobGraph.id)
             val workers = startWorkflow(jobGraph.id).fold(Set.empty[(ActorRef, Job)])(createWorkers(_))
             if (workers.isEmpty) {

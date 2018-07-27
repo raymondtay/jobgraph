@@ -75,16 +75,21 @@ trait WorkflowOps extends WorkflowImplicits {
     * Creates a multi-graph model based on the inputs; see [[quiver.Graph]] for
     * dtails. Once the parsing of the configuration file is completed, then its
     * likely that you would invoke this function.
-    *
+    * 
+    * @param wfConfig some kind of workflow config
     * @param nodes
     * @param edges
     * @return multigraph
     */
-  def createWf(nodes: Seq[LNode[Job,UUID]]) : Reader[Seq[LEdge[Job,String]], Workflow] = Reader {
+  def createWf(wfConfig: Option[WorkflowConfig], nodes: Seq[LNode[Job,UUID]]) : Reader[Seq[LEdge[Job,String]], Workflow] = Reader {
     (edges: Seq[LEdge[Job,String]]) ⇒
-      val wf = Workflow(mkGraph(nodes, edges))
-      work += wf
-      wf
+      wfConfig.fold{
+        val wf = Workflow(mkGraph(nodes, edges))
+        work += wf
+        wf }{config ⇒
+        val wf = Workflow(mkGraph(nodes, edges), config)
+        work += wf
+        wf}
   }
 
   /**

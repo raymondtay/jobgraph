@@ -13,32 +13,32 @@ import hicoden.jobgraph._
 import hicoden.jobgraph.configuration.workflow.model._
 import hicoden.jobgraph.configuration.step.model._
 
-// queries for operations over the `workflow_template` table
-trait WorkflowTemplates {
+// Queries for operations over the `workflow_rt` , `job_rt`,
+// `workflow_template` & `job_template` tables.
+trait DatabaseOps extends FragmentFunctions {
+
+  // postgresql enum types implicits
+  implicit val WorkflowStatesEnum = pgEnum(WorkflowStates, "WorkflowStates")
+  implicit val JobStatesEnum      = pgEnum(JobStates, "JobStates")
 
   /**
-    * Takes the workflow configuration object and inserts a record into the
+    * Takes the workflow configuration object and prepares the data for the
     * database table. Note: Database constraints are respected and client of
     * this call should handle the SQLException, if errors prevail.
     * @param jobConfig
     * @return ConnectionIO[Int] where number of records is indicated
     */
-  def insertTemplate(wfConfig: WorkflowConfig) : ConnectionIO[Int] =
-    sql"insert into workflow_template (id, name, description, jobgraph) values( ${wfConfig.id}, ${wfConfig.name}, ${wfConfig.description}, ${wfConfig.jobgraph} )".update.run
-
-}
-
-// queries for operations over the `job_template` table
-trait JobTemplates extends FragmentFunctions {
+  def workflowConfigOp(wfConfig: WorkflowConfig) : Fragment =
+    sql"insert into workflow_template (id, name, description, jobgraph) values( ${wfConfig.id}, ${wfConfig.name}, ${wfConfig.description}, ${wfConfig.jobgraph} )"
 
   /**
-    * Takes the job configuration object and inserts a record into the
+    * Takes the job configuration object and prepares the data for the
     * database table. Note: Database constraints are respected and client of
     * this call should handle the SQLException, if errors prevail.
     * @param jobConfig
     * @return ConnectionIO[Int] where number of records is indicated
     */
-  def insertTemplate(jobConfig: JobConfig) : ConnectionIO[Int] = {
+  def jobConfigOp(jobConfig: JobConfig) : Fragment = {
     // TODO : replace using HLists
     val xs = runnerExpr.run(jobConfig.runner)
     val insertStatement =
@@ -48,15 +48,8 @@ trait JobTemplates extends FragmentFunctions {
       fr"${jobConfig.description}," ++
       fr"${jobConfig.sessionid}," ++
       fr"${jobConfig.restart.max}," ++ xs ++ fr")"
-    insertStatement.update.run
+    insertStatement
   }
-
-}
-
-// Queries for operations over the `workflow_rt` & `job_rt` tables.
-trait RuntimeDbOps extends FragmentFunctions {
-  implicit val WorkflowStatesEnum = pgEnum(WorkflowStates, "WorkflowStates")
-  implicit val JobStatesEnum = pgEnum(JobStates, "JobStates")
 
   /**
     * Inserts a workflow record into the `workflow_rt` table
@@ -66,7 +59,7 @@ trait RuntimeDbOps extends FragmentFunctions {
     * @return a ConnectionIO[Int] object, when run indicates how many rows were
     * inserted.
     */
-  def initWorkflowRecs : Reader[Workflow,ConnectionIO[Int]] = Reader{ (rec: Workflow) ⇒
+  def workflowRtOp : Reader[Workflow,ConnectionIO[Int]] = Reader{ (rec: Workflow) ⇒
     val insertWfStatement =
       fr"insert into workflow_rt(wf_id, wf_template_id, status, job_id) values(" ++
       fr"${rec.id}, " ++
@@ -74,7 +67,7 @@ trait RuntimeDbOps extends FragmentFunctions {
       fr"${rec.status}, " ++
       arrayUUIDExpr(rec.jobgraph.nodes.map(_.id).toList) ++
       fr");"
-    (insertWfStatement +: rec.jobgraph.labNodes.map(n ⇒ initJobRec(n.vertex))).reduce(_ ++ _ ).update.run
+    (insertWfStatement +: rec.jobgraph.labNodes.map(n ⇒ jobRtOp(n.vertex))).reduce(_ ++ _ ).update.run
   }
 
   /**
@@ -83,7 +76,7 @@ trait RuntimeDbOps extends FragmentFunctions {
     * @return a ConnectionIO[Int] object, when run indicates how many rows were
     * inserted.
     */
-  def initJobRec : Reader[Job, Fragment] = Reader{ (rec: Job) ⇒
+  def jobRtOp : Reader[Job, Fragment] = Reader{ (rec: Job) ⇒
     val insertStatement =
       fr"insert into job_rt (id, job_template_id, config, status) values(" ++
       fr"${rec.id}," ++

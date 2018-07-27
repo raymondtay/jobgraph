@@ -102,7 +102,7 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
   val actorMaterializer = materializer
 
   sequential
-  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
+  implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated)
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces, but
   // notice that no workflows are loaded statically.
@@ -138,7 +138,7 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
   val actorMaterializer = materializer
 
   sequential
-  implicit val routeTimeout = RouteTestTimeout(5.seconds.dilated)
+  implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated)
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces
   val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))

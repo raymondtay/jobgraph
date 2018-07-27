@@ -68,7 +68,7 @@ object GraphData {
     LEdge(jobA, jobC, "2 -> 3") :: Nil
 
   val wfConfig = WorkflowConfig(id = 42, "Sample", "A simple demonstration", Nil, "1->2"::"2->3"::Nil)
-  def graphGen : Workflow = WorkflowOps.createWf(nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq]).copy(config = wfConfig)
+  def graphGen : Workflow = WorkflowOps.createWf(wfConfig, nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq])
 }
 
 // Generates the workflow in question

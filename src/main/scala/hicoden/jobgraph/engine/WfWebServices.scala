@@ -150,7 +150,7 @@ trait WorkflowWebServices {
       if (data.utf8String.isEmpty) validateStartWorkflowRequest(someIndex).run(req) else
       validateJobOverrides(timeout)(data.utf8String).fold(
         complete(StatusCodes.BadRequest, prepareBadResponse(s"Requested job overrides failed upon validation"::Nil))(req)
-      )(result ⇒ {println(s"RESULT ----> $result");validateStartWorkflowRequest(someIndex).run(req)})
+      )(_ ⇒ validateStartWorkflowRequest(someIndex).run(req))
     }
 
   def validateStartWorkflowRequest(someIndex: String)(implicit timeout: akka.util.Timeout) =

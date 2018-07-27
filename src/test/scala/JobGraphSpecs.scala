@@ -31,7 +31,7 @@ object GraphDataScenarioA {
     LEdge(jobC, jobD, "c -> d") ::
     LEdge(jobB, jobD, "b -> d") :: Nil
 
-  def graphGen : Workflow = WorkflowOps.createWf(nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq])
+  def graphGen : Workflow = WorkflowOps.createWf(None, nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq])
 
   def workflowGen : Gen[Workflow] = for {
     workflow ← oneOf(graphGen :: Nil)
@@ -97,9 +97,9 @@ object GraphDataScenarioB {
     LEdge(jobA, jobF, "a -> f") :: Nil
 
   def graphGen : Workflow = {
-    WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
-    WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
-    WorkflowOps.createWf(nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(None, nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(None, nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(None, nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
   }
 
   def workflowGen : Gen[Workflow] = for {
@@ -167,9 +167,9 @@ object GraphDataScenarioC {
     LEdge(jobA, jobF, "a -> f") :: Nil
 
   def graphGen : Workflow = {
-    WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
-    WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
-    WorkflowOps.createWf(nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(None, nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(None, nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
+    WorkflowOps.createWf(None, nodesC.to[scala.collection.immutable.Seq])(edgesC.to[scala.collection.immutable.Seq])
   }
 
   def workflowGen : Gen[Workflow] = for {
@@ -179,10 +179,10 @@ object GraphDataScenarioC {
   }
 
   // Purely for generation of the [a -> b, a -> c]
-  def graphGenUseCase1 : Workflow = WorkflowOps.createWf(nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
+  def graphGenUseCase1 : Workflow = WorkflowOps.createWf(None, nodesA.to[scala.collection.immutable.Seq])(edgesA.to[scala.collection.immutable.Seq])
 
-  // Purely for generation of the [a -> b, a -> c, c -> d, b -> d]
-  def graphGenUseCase2 : Workflow = WorkflowOps.createWf(nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
+  // Purely for generation of the [a -> b, a -> c, c -> dNone, n b -> d]
+  def graphGenUseCase2 : Workflow = WorkflowOps.createWf(None, nodesB.to[scala.collection.immutable.Seq])(edgesB.to[scala.collection.immutable.Seq])
 
   def workflowUseCase1Gen : Gen[Workflow] = for {
     workflow ← oneOf(graphGenUseCase1 :: Nil)
@@ -241,7 +241,7 @@ object GraphDataScenarioD {
   
   import WorkflowOps._
 
-  def graphGen : Workflow = createWf(Seq(shirt, tie, jacket, belt, pants, undershorts, socks, shoes, watch))(Seq(e1, e2, e3, e4, e5, e6, e7, e8, e9))
+  def graphGen : Workflow = createWf(None, Seq(shirt, tie, jacket, belt, pants, undershorts, socks, shoes, watch))(Seq(e1, e2, e3, e4, e5, e6, e7, e8, e9))
 
   def workflowGen : Gen[Workflow] = for {
     workflow ← oneOf(graphGen :: Nil)

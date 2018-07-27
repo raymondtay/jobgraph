@@ -10,17 +10,21 @@ import hicoden.jobgraph.configuration.step.{Parser ⇒ StepParser, Loader ⇒ St
 import hicoden.jobgraph.configuration.step.model._
 import hicoden.jobgraph.configuration.workflow.model._
 import hicoden.jobgraph.{Job, JobId}
+import hicoden.jobgraph.engine.persistence._
 
+import doobie._
 import quiver._
 
 /**
- * Responsible for taking the hydrated workflow configs and instantiating the
- * proper jobgraphs. Loads the engine's configuration too.
+ * Responsibilities:
+ * - Loads the hydrates the workflow and job configurations (in-memory and
+ *   persistent storage)
+ * - Loads the engine's configuration (in-memory)
  *
  * @author Raymond Tay
  * @verison 1.0
  */
-trait EngineOps extends Concretizer {
+trait EngineOps extends Concretizer with DatabaseOps {
 
   import cats._, data._, implicits._
   import hicoden.jobgraph.engine.runtime._
@@ -61,6 +65,24 @@ trait EngineOps extends Concretizer {
 
     (jdt, wfdt)
   }
+
+  /**
+    * Craft the database sql object for a run
+    * @param jdt
+    * @return ConnectionIO[Int]
+    */
+  def fillDatabaseJobConfigs : Reader[JobDescriptorTable, ConnectionIO[Int]] =
+    Reader{ (jdt: JobDescriptorTable) ⇒
+      import doobie.implicits._
+      jdt.values.map(jobConfigOp(_)).reduce(_ ++ _).update.run
+    }
+  
+  def fillDatabaseWorkflowConfigs : Reader[WorkflowDescriptorTable, ConnectionIO[Int]] =
+    Reader{ (wfdt: WorkflowDescriptorTable) ⇒
+      import doobie.implicits._
+      wfdt.values.map(workflowConfigOp(_)).reduce(_ ++ _).update.run
+    }
+
 
   /**
     * The primary validation scheme here would be to make sure the runners
