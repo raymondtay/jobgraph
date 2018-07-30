@@ -148,7 +148,7 @@ class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWeb
   val actorSystem = system
   val actorMaterializer = materializer
 
-  val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::"jobs4"::Nil, "workflows"::Nil))
+  val engine = system.actorOf(akka.actor.Props(classOf[Engine], None, "jobs"::"jobs2"::"jobs3"::"jobs4"::Nil, "workflows"::Nil))
 
   sequential // all specifications are run sequentially
   implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated) // need to dilate time on slower build systems.

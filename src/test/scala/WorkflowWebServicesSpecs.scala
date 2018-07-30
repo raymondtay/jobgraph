@@ -106,7 +106,7 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces, but
   // notice that no workflows are loaded statically.
-  val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::Nil, Nil))
+  val engine = system.actorOf(akka.actor.Props(classOf[Engine], None, "jobs"::"jobs2"::"jobs3"::Nil, Nil))
 
   "When querying for workflow(s) in the system" in {
 
@@ -141,7 +141,7 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
   implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated)
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces
-  val engine = system.actorOf(akka.actor.Props(classOf[Engine], "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))
+  val engine = system.actorOf(akka.actor.Props(classOf[Engine], None, "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))
 
   "When submitting a ReST call to the Engine to create a workflow" should {
     import WorkflowDummyData._

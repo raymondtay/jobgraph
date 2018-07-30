@@ -11,6 +11,7 @@ import scala.util._
 import scala.concurrent.duration._
 import hicoden.jobgraph.engine.persistence.Transactors
 import hicoden.jobgraph.engine.runtime.jobOverridesDecoder
+import hicoden.jobgraph.configuration.engine.HOCONValidation
 import hicoden.jobgraph.configuration.engine.model.{MesosConfig, JobgraphConfig}
 import hicoden.jobgraph.configuration.step.model.JobConfig
 import hicoden.jobgraph.configuration.workflow.model.{WorkflowConfig, JobConfigOverrides, JobOverrides}
@@ -53,8 +54,9 @@ case class WorkflowRuntimeReport(workflowId: WorkflowId)
 // (c) Update its internal structure and decides whether to push the execution to the next step(s) because there will be wait-times at certain control
 //     points - as decided by the digraph (take note that it can be a multi-graph)
 //
-class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) extends Actor with ActorLogging with EngineStateOps with EngineOps {
+class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflowNamespaces: List[String]) extends Actor with ActorLogging with EngineStateOps with EngineOps {
   import cats._, data._, implicits._
+  import cats.effect.IO
   import cats.free._
   import WorkflowOps._
   import doobie._, doobie.implicits._
@@ -86,27 +88,28 @@ class Engine(jobNamespaces: List[String], workflowNamespaces: List[String]) exte
     * definitions (housed in their respective configuration files i.e.
     * application.conf) and inject the same data into their respective
     * configuration tables (see [[workflow_template]] and [[job_template]]) -
-    * You should ever do this just once.
+    * You should ever do this just once - treat it as a RESET.
+    * When passed the command line options
+    * "--initDb=yes" we basically re-create the data information as in the
+    * configuration files.
     */
   override def preStart() = {
     for { (l,r) <- prepareDescriptorTables(jobNamespaces, workflowNamespaces) :: Nil } { jdt = l; wfdt = r }
 
-    //(fillDatabaseWorkflowConfigs(wfdt) *> fillDatabaseJobConfigs(jdt)).transact(Transactors.xa).unsafeRunSync
-    mesosConfig =
-      loadMesosConfig.fold(
-        errors ⇒
-        { logger.warn(s"Unable to load Mesos Config; not going to use Apache Mesos: details $errors")
-          None
-        },
-      _.some)
-    jobgraphConfig =
-      loadEngineConfig.fold(
-        errors ⇒
-        { logger.error(s"Unable to load Engine Config: details $errors")
-          None
-        },
-      _.some)
- 
+    initDb.fold({}){ _ ⇒
+      import Transactors.y._
+      (deleteAllWorkflowTemplates.run.attempt        *>
+       deleteAllJobTemplates.run.attempt             *>
+       fillDatabaseWorkflowConfigs(wfdt).run.attempt *>
+       fillDatabaseJobConfigs(jdt).run.attempt).quick.unsafeRunSync}
+
+    mesosConfig    = loadMesosConfig.fold(whenUnableToLoadConfig("Mesos")(_), _.some)
+    jobgraphConfig = loadEngineConfig.fold(whenUnableToLoadConfig("Engine")(_), _.some)
+  }
+
+  private def whenUnableToLoadConfig(namespace: String) = Reader{ (errors: NonEmptyList[HOCONValidation]) ⇒
+    logger.warn(s"Unable to load $namespace Config; not going to use Apache Mesos: details $errors")
+    None
   }
 
   override def preRestart(cause: Throwable, msg: Option[Any]) {}
@@ -411,7 +414,21 @@ object Engine extends App with JobCallbacks with WorkflowWebServices with JobWeb
   implicit val executionContext = actorSystem.dispatcher
   implicit val actorMaterializer = ActorMaterializer()
 
-  val engine = actorSystem.actorOf(Props(classOf[Engine], "jobs":: Nil, "workflows" :: Nil), "Engine")
+  // terminating condition
+  private def whenCliOptUnavailable = {
+    println("An illegal option was given, and we are exiting because we dont know how to handle this.")    
+    Actor.noSender
+  }
+
+  // Parse the command line opts given
+  val engine =
+    EngineCliOptsParser.parseCommandlineArgs(args).
+      fold(whenCliOptUnavailable)(cliOpt ⇒ actorSystem.actorOf(Props(classOf[Engine], cliOpt.initDb, "jobs":: Nil, "workflows" :: Nil), "Engine"))
+
+  if (engine == Actor.noSender) {
+    println("Exiting Jobgraph engine now.")
+    System.exit(-1)
+  }
 
   // start a job graph running
   // TODO: remove this in the next iteration

@@ -29,7 +29,7 @@ trait DatabaseOps extends FragmentFunctions {
     * @return ConnectionIO[Int] where number of records is indicated
     */
   def workflowConfigOp(wfConfig: WorkflowConfig) : Fragment =
-    sql"insert into workflow_template (id, name, description, jobgraph) values( ${wfConfig.id}, ${wfConfig.name}, ${wfConfig.description}, ${wfConfig.jobgraph} )"
+    fr"insert into workflow_template (id, name, description, jobgraph) values( ${wfConfig.id}, ${wfConfig.name}, ${wfConfig.description}, ${wfConfig.jobgraph} );"
 
   /**
     * Takes the job configuration object and prepares the data for the
@@ -47,7 +47,7 @@ trait DatabaseOps extends FragmentFunctions {
       fr"${jobConfig.name}," ++
       fr"${jobConfig.description}," ++
       fr"${jobConfig.sessionid}," ++
-      fr"${jobConfig.restart.max}," ++ xs ++ fr")"
+      fr"${jobConfig.restart.max}," ++ xs ++ fr");"
     insertStatement
   }
 
@@ -86,6 +86,9 @@ trait DatabaseOps extends FragmentFunctions {
       fr");"
     insertStatement
   }
+
+  def deleteAllWorkflowTemplates = sql"delete from workflow_template".update
+  def deleteAllJobTemplates = sql"delete from job_template".update
 
 }
 

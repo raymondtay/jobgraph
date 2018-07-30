@@ -67,20 +67,25 @@ trait EngineOps extends Concretizer with DatabaseOps {
   }
 
   /**
-    * Craft the database sql object for a run
+    * Build the SQL statements and bunch them up.
     * @param jdt
-    * @return ConnectionIO[Int]
+    * @return Update0 - it's doobie's representation of a sql statement
     */
-  def fillDatabaseJobConfigs : Reader[JobDescriptorTable, ConnectionIO[Int]] =
+  def fillDatabaseJobConfigs : Reader[JobDescriptorTable, Update0] =
     Reader{ (jdt: JobDescriptorTable) ⇒
       import doobie.implicits._
-      jdt.values.map(jobConfigOp(_)).reduce(_ ++ _).update.run
+      jdt.values.map(jobConfigOp(_)).reduce(_ ++ _).update
     }
-  
-  def fillDatabaseWorkflowConfigs : Reader[WorkflowDescriptorTable, ConnectionIO[Int]] =
+ 
+  /**
+    * Build the SQL statement and bunch them up
+    * @param wfdt
+    * @return Update0 - it's doobie's representation of a sql statement
+    */
+  def fillDatabaseWorkflowConfigs : Reader[WorkflowDescriptorTable, Update0] =
     Reader{ (wfdt: WorkflowDescriptorTable) ⇒
       import doobie.implicits._
-      wfdt.values.map(workflowConfigOp(_)).reduce(_ ++ _).update.run
+      wfdt.values.map(workflowConfigOp(_)).reduce(_ ++ _).update
     }
 
 

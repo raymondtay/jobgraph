@@ -13,12 +13,14 @@ object Dependencies {
   val typesafeCfgVersion = "1.3.2"  // Scala library for configuraiton
   val akkaHttpVersion    = "10.1.1" // Akka http library
   val doobieVersion      = "0.5.3"
+  val scoptVersion       = "3.7.0"
   val logbackClassicVersion = "1.2.3" // logging library
   val scalaLoggingVersion   = "3.9.0" // logging library
   val pureConfigVersion     = "0.9.1" // Scala library for removing boilerplate from reading configuration files
   val fastparseVersion      = "1.0.0" // Scala library for parsing ASTs, DSLs etc
   val circeVersion          = "0.9.3" // Scala library for processing JSON
 
+  val scoptLib = "com.github.scopt" %% "scopt" % scoptVersion
   val postgresqlLibs = Seq(
     // Start with this one
     "org.tpolecat" %% "doobie-core"      % doobieVersion,
@@ -58,7 +60,7 @@ object Dependencies {
 
   val generalLibs = actorLib :: actorStreamLib :: catsLib ::
                     quiverLib :: typesafeConfigLib :: pureConfig ::
-                    fastparse :: akkaHttpLib :: Nil ++ loggingLibs ++ scioLibs ++ circeLibs ++ postgresqlLibs
+                    fastparse :: akkaHttpLib :: scoptLib :: Nil ++ loggingLibs ++ scioLibs ++ circeLibs ++ postgresqlLibs
 
   val testLibs = Seq(specs2Test , specs2ScalaCheckTest, actorTest, scioTestLib, scalatestLib, akkaHttpTestLib).map(_ % Test) ++ circeLibs
 }

@@ -26,7 +26,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
   "Engine" must {
 
     "not proceed to execute if the workflow id is not found; when no jobs nor workflows are loaded." in {
-      val engine = system.actorOf(Props(classOf[Engine], Nil, Nil), "Engine-1")
+      val engine = system.actorOf(Props(classOf[Engine], None, Nil, Nil), "Engine-1")
       val nonExistentId = 42
 
       engine ! StartWorkflow(nonExistentId)
@@ -34,14 +34,14 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
     }
 
     "not proceed to execute if the workflow id is not found; when jobs nor workflows are loaded." in {
-      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-2")
+      val engine = system.actorOf(Props(classOf[Engine], None, "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-2")
       val existentId = 1
       engine ! StartWorkflow(existentId)
       expectMsg("No such id")
     }
 
     "proceed to execute if the workflow id is found after jobs nor workflows are loaded." in {
-      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-3")
+      val engine = system.actorOf(Props(classOf[Engine], None, "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-3")
       val existentId = 18
       within(3 second) {
         engine ! StartWorkflow(existentId)
@@ -51,7 +51,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
     }
 
     "proceed to execute concurrently if the workflow id is found after jobs nor workflows are loaded." in {
-      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-4")
+      val engine = system.actorOf(Props(classOf[Engine], None, "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-4")
       val existentId = 19
       within(10 second) {
         engine ! StartWorkflow(existentId)
@@ -62,7 +62,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
     }
 
     "not proceed to execute if the workflow id is found but there's a loop; when jobs nor workflows are loaded." in {
-      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-5")
+      val engine = system.actorOf(Props(classOf[Engine], None, "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-5")
       val existentId = 20
       engine ! StartWorkflow(existentId)
       Thread.sleep(2000)
@@ -71,7 +71,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
 
     "updating the workflow that ∉ of the memory of jobgraph is bound to fail with an entry in the logs." in {
       import hicoden.jobgraph.JobStates
-      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-6")
+      val engine = system.actorOf(Props(classOf[Engine], None, "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-6")
       val invalidWfId = java.util.UUID.randomUUID // these ids do not exist during the test since its generated runtime and we didn't capture a`prior.
       val invalidJobId = java.util.UUID.randomUUID
       engine ! UpdateWorkflow(invalidWfId, invalidJobId, JobStates.forced_termination)
@@ -80,7 +80,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
 
     "updating the workflow that ∈ of the memory of jobgraph is bound to succeed, and sets off the next job in line." in {
       import hicoden.jobgraph.JobStates
-      val engine = system.actorOf(Props(classOf[Engine], "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-7")
+      val engine = system.actorOf(Props(classOf[Engine], None, "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-7")
       val existentId = 18
       engine ! StartWorkflow(existentId)
 
