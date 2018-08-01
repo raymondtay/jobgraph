@@ -10,6 +10,9 @@ jobs:
       SBT_VERSION: 0.13.17
       SBT_OPTS: -Xms3072M -Xmx3072M -Xss1M -XX:+CMSClassUnloadingEnabled
       COVERALLS_REPO_TOKEN: epxO4zHVNvU9gbIfnfgXsqYRNuyWhw5GZ
+      TEST_DATABASE_URL: postgresql://root@localhost/circle_test
+      POSTGRES_USER: root
+      POSTGRES_DB: circle_test
     # In CircleCI 1.0 we used a pre-configured image with a large number of languages and other packages.
     # In CircleCI 2.0 you can now specify your own image, or use one of our pre-configured images.
     # The following configuration line tells CircleCI to use the specified docker image as the runtime environment for you job.
@@ -21,13 +24,7 @@ jobs:
     # https://circleci.com/docs/2.0/circleci-images/
     docker:
     - image: circleci/openjdk:8-jdk-node
-      environment:
-          TEST_DATABASE_URL: postgresql://root@localhost/circletest
-
     - image: circleci/postgres:9.6-alpine-ram
-       environment:
-          POSTGRES_USER: root
-          POSTGRES_DB: circle_test
 
     steps:
     - checkout
@@ -35,82 +32,82 @@ jobs:
     - run: sudo apt-get install postgresql-client-9.6
     - run: whoami
     - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c " CREATE TABLE IF NOT EXISTS workflow_template (
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c " CREATE TABLE IF NOT EXISTS workflow_template (
+               id integer PRIMARY KEY,
+               name varchar(256) NOT NULL,
+               description text NOT NULL,
+               jobgraph text[] NOT NULL
+           );"
+    - run: |
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c "CREATE TYPE Runner AS (
+              module text,
+              runner text,
+              cliargs text[]
+            );"
+    - run: |
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c "CREATE TABLE IF NOT EXISTS job_template (
              id integer PRIMARY KEY,
              name varchar(256) NOT NULL,
              description text NOT NULL,
-             jobgraph text[] NOT NULL
-         );"
+             workdir text NOT NULL,
+             sessionid text NOT NULL,
+             restart integer NOT NULL,
+             runner Runner NOT NULL
+           );"
     - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c "CREATE TYPE Runner AS (
-            module text,
-            runner text,
-            cliargs text[]
-          );"
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c "CREATE TYPE WorkflowStates as ENUM(
+             'started',
+             'not_started',
+             'finished',
+             'forced_termination'
+           );"
     - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c "CREATE TABLE IF NOT EXISTS job_template (
-           id integer PRIMARY KEY,
-           name varchar(256) NOT NULL,
-           description text NOT NULL,
-           workdir text NOT NULL,
-           sessionid text NOT NULL,
-           restart integer NOT NULL,
-           runner Runner NOT NULL
-         );"
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c "CREATE TYPE JobStates as ENUM(
+             'inactive',
+             'start',
+             'active',
+             'forced_termination',
+             'finished'
+           );"
     - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c "CREATE TYPE WorkflowStates as ENUM(
-           'started',
-           'not_started',
-           'finished',
-           'forced_termination'
-         );"
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c "CREATE TYPE JobConfigRT as (
+             name text,
+             description text,
+             sessionid text,
+             restart integer,
+             runner Runner
+           );"
     - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c "CREATE TYPE JobStates as ENUM(
-           'inactive',
-           'start',
-           'active',
-           'forced_termination',
-           'finished'
-         );"
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c "CREATE TABLE IF NOT EXISTS job_rt (
+             id UUID PRIMARY KEY,
+             job_template_id integer NOT NULL references job_template(id),
+             config JobConfigRT NOT NULL,
+             status JobStates NOT NULL
+           );"
     - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c "CREATE TYPE JobConfigRT as (
-           name text,
-           description text,
-           sessionid text,
-           restart integer,
-           runner Runner
-         );"
-    - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c "CREATE TABLE IF NOT EXISTS job_rt (
-           id UUID PRIMARY KEY,
-           job_template_id integer NOT NULL references job_template(id),
-           config JobConfigRT NOT NULL,
-           status JobStates NOT NULL
-         );"
-    - run: |
-      psql \
-      -d $TEST_DATABASE_URL \
-      -c "CREATE TABLE IF NOT EXISTS workflow_rt (
-           id serial PRIMARY KEY,
-           wf_id UUID NOT NULL,
-           wf_template_id integer NOT NULL references workflow_template(id),
-           status WorkflowStates NOT NULL,
-           job_id UUID[] NOT NULL
-         );"
+        psql \
+        -d $TEST_DATABASE_URL \
+        -c "CREATE TABLE IF NOT EXISTS workflow_rt (
+             id serial PRIMARY KEY,
+             wf_id UUID NOT NULL,
+             wf_template_id integer NOT NULL references workflow_template(id),
+             status WorkflowStates NOT NULL,
+             job_id UUID[] NOT NULL
+           );"
     - run: mkdir -p $CIRCLE_ARTIFACTS $CIRCLE_TEST_REPORTS
     - run: /opt/sbt/bin/sbt coverageOn clean test
     - run: /opt/sbt/bin/sbt coverageReport coveralls
