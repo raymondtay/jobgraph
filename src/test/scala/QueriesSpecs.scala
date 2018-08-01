@@ -20,11 +20,11 @@ object WorkflowDAG {
   import quiver._
 
   val jobA =
-    Job("job-a", JobConfig(1, "job-a-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value71"::Nil), Nil, Nil))
+    Job("job-a", JobConfig(1, "job-a-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value71"::Nil)))
   val jobB =
-    Job("job-b", JobConfig(2, "job-b-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value72"::Nil), Nil, Nil))
+    Job("job-b", JobConfig(2, "job-b-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value72"::Nil)))
   val jobC =
-    Job("job-c", JobConfig(3, "job-c-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value73"::Nil), Nil, Nil))
+    Job("job-c", JobConfig(3, "job-c-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value73"::Nil)))
 
   val nodes =
     LNode(jobA, jobA.id) ::
@@ -35,7 +35,7 @@ object WorkflowDAG {
     LEdge(jobA, jobB, "1 -> 2") ::
     LEdge(jobA, jobC, "2 -> 3") :: Nil
 
-  val wfConfig = WorkflowConfig(id = 42, "Sample", "A simple demonstration", Nil, "1->2"::"2->3"::Nil)
+  val wfConfig = WorkflowConfig(id = 42, "Sample", "A simple demonstration", "1->2"::"2->3"::Nil)
   def graphGen : Workflow = WorkflowOps.createWf(wfConfig.some, nodes.to[scala.collection.immutable.Seq])(edges.to[scala.collection.immutable.Seq])
 }
 
@@ -46,7 +46,7 @@ class DbOpsSpecs extends Specification with ScalaCheck with DatabaseOps { def is
   """
 
   def dbOpToInsertWorkflowTemplate = {
-    val wfConfig = WorkflowConfig(id = 0, name = "Test Workflow", description = "Test Description", steps = Nil, jobgraph = List("0->1"))
+    val wfConfig = WorkflowConfig(id = 0, name = "Test Workflow", description = "Test Description", jobgraph = List("0->1"))
     val r = workflowConfigOp(wfConfig)
     r must beAnInstanceOf[Free[ConnectionIO,_]]
     r must not beNull
@@ -60,8 +60,7 @@ class DbOpsSpecs extends Specification with ScalaCheck with DatabaseOps { def is
                 workdir = "",
                 sessionid = "blahblah",
                 restart = Restart(1),
-                runner = Runner("module.m", "path/to/execfile", Nil),
-                inputs = Nil, outputs = Nil)
+                runner = Runner("module.m", "path/to/execfile", Nil))
     val r = jobConfigOp(jobConfig)
     r must beAnInstanceOf[Free[ConnectionIO,_]]
     r must not beNull

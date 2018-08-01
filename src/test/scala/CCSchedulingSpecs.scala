@@ -135,8 +135,8 @@ class CCSchedulingSpecs extends Specification with StatsMiner with AfterAll {
   implicit val actorMaterializer = ActorMaterializer()
 
   def afterAll() = {
-    actorSystem.terminate() 
     actorMaterializer.shutdown()
+    actorSystem.terminate() 
   }
 
 }

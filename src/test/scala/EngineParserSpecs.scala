@@ -88,9 +88,9 @@ class EngineParserSpecs extends mutable.Specification with ScalaCheck with Parse
     import EngineParserData.arbValidEngineDbNamespaces
     "Valid namespace keys to load the Engine's database will result in success." >> prop { (ns: String) ⇒
       loadEngineDb(ns).toEither must beRight((cfg: JobgraphDb) ⇒{
-        cfg.name must be_==("some_jobgraph_db")
-        cfg.username must be_==("admin")
-        cfg.password must be_==("admin")
+        cfg.name must not be empty
+        cfg.username must not be empty
+        cfg.password must not be empty
       })
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }

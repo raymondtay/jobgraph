@@ -30,8 +30,7 @@ case class JobConfig(id : Int,
                      workdir : String,
                      sessionid : String,
                      restart : Restart,
-                     runner: Runner,
-                     inputs : List[String], outputs: List[String] )
+                     runner: Runner)
 
 object RunnerType extends Enumeration {
   type RunnerType = Value

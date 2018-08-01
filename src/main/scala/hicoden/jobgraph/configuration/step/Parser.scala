@@ -49,7 +49,6 @@ trait Parser {
       if (!namespaces.isEmpty)
         namespaces.map(namespace ⇒ loadDefaultByNamespace(namespace)).reduce(_ |+| _)
       else NamespaceNotFound.invalidNel[List[JobConfig]]
-         
     }
 
   /**

@@ -191,7 +191,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
         workdir = "", sessionid = "",
         restart = Restart(3),
         runner = Runner(runner = "Dataflow:java", module = getClass.getClassLoader.getResource("fake_start_dataflow_job.sh").getPath.toString,
-        cliargs = Nil), inputs = Nil, outputs = Nil)
+        cliargs = Nil))
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
     val wfId = java.util.UUID.randomUUID

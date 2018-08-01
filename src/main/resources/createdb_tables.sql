@@ -22,7 +22,7 @@ CREATE DATABASE jobgraph OWNER jobgraphadmin;
 CREATE TABLE IF NOT EXISTS workflow_template (
     id integer PRIMARY KEY,
     name varchar(256) NOT NULL,
-    description text NULL,
+    description text NOT NULL,
     jobgraph text[] NOT NULL
 );
 
@@ -53,8 +53,9 @@ CREATE TYPE Runner AS (
 CREATE TABLE IF NOT EXISTS job_template (
   id integer PRIMARY KEY,
   name varchar(256) NOT NULL,
-  description text NULL,
-  sessionid text NULL,
+  description text NOT NULL,
+  workdir text NOT NULL,
+  sessionid text NOT NULL,
   restart integer NOT NULL,
   runner Runner NOT NULL
 );
@@ -63,7 +64,8 @@ CREATE TABLE IF NOT EXISTS job_template (
 CREATE TYPE WorkflowStates as ENUM(
   'started',
   'not_started',
-  'done'
+  'finished',
+  'forced_termination'
 );
 
 -- see [[JobStates]] for the in-memory model mapping

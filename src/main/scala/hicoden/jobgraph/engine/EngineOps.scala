@@ -1,6 +1,6 @@
 package hicoden.jobgraph.engine
 
-import hicoden.jobgraph.WorkflowOps
+import hicoden.jobgraph.{WorkflowOps, JobStates, WorkflowStates, WorkflowId}
 import hicoden.jobgraph.configuration.engine.{Parser ⇒ EngineConfigParser}
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
@@ -14,6 +14,8 @@ import hicoden.jobgraph.engine.persistence._
 
 import doobie._
 import quiver._
+
+import scala.language.postfixOps
 
 /**
  * Responsibilities:
@@ -67,6 +69,69 @@ trait EngineOps extends Concretizer with DatabaseOps {
   }
 
   /**
+    * Invoked iff when the commandline option "--initDb=no" (see
+    * [[Engine.preStart]]) and jobgraph hydrates the configuration
+    * data present in the database and returns it
+    * @return 2-tuple where left is [[JobDescriptorTable]] and
+    *         right is [[WorkflowDescriptorTable]].
+    */
+  def loadAllConfigTemplatesFromDatabase = {
+    import doobie._
+    import doobie.implicits._ // this is where the "quick" method comes into play
+    import doobie.postgres._
+    import doobie.postgres.implicits._
+    import cats._
+    import cats.data._
+    import cats.effect.IO
+    import cats.implicits._
+
+    import Transactors.y._
+    var jdt : JobDescriptorTable = collection.immutable.HashMap.empty[Int, JobConfig]
+    var wfdt : WorkflowDescriptorTable = collection.immutable.HashMap.empty[Int, WorkflowConfig]
+
+    // dont want leaky abstractions, so the nitty gritty stuff is done here.
+    def setWorkflowTemplates = Reader{ (loadedWfConfigs: List[WorkflowConfig]) ⇒
+      wfdt = WfOps.hydrateWorkflowConfigs(loadedWfConfigs).runS(wfdt).value
+      ().pure[ConnectionIO]
+    }
+    def setJobTemplates = Reader{ (loadedJobConfigs: List[JobConfig]) ⇒ 
+      jdt = StepOps.hydrateJobConfigs(loadedJobConfigs).runS(jdt).value
+      ().pure[ConnectionIO]
+    }
+
+    ((selectAllWorkflowTemplates >>= setWorkflowTemplates.run) *>
+     (selectAllJobTemplates      >>= setJobTemplates.run)).quick.unsafeRunSync
+
+    (jdt, wfdt)
+  }
+
+  /**
+    * Combinator function that updates both the inmemory state and database
+    * state; upon a db failure it will propagate back the error to the [[Engine]]
+    * Note: A maximum timeout of 10 seconds is configured - internal to this
+    * function.
+    * @param wfId
+    * @param jobId
+    * @param jobStatus
+    * @return a Left(exception object) or a Right(some boolean value indicating
+    * the success/failure of the in-memory update)
+    */
+  def updateWorkflowDbNInmemory(wfId: WorkflowId)(jobId: JobId) : Reader[JobStates.States, Either[Exception,Option[Boolean]]] =
+    Reader { (jobStatus: JobStates.States) ⇒
+      import doobie._
+      import doobie.implicits._
+      import Transactors.y._
+      import scala.concurrent.duration._
+
+      var result : Either[Exception, Option[Boolean]] = null
+      updateJobStatusRT(jobStatus)(jobId).update.quick.attemptSql.unsafeRunTimed(10.seconds).fold{result = Left(new Exception(s"Timeout occurred! Update to job_rt failed for job: $jobId of workflow: $wfId."))}{
+        case Left(sqle) ⇒ result = Left(new Exception(s"Update to job_rt failed for job: $jobId or workflow: $wfId with error: $sqle"))
+        case Right(_)   ⇒ result = updateWorkflow(wfId)(jobId)(jobStatus)
+      }
+      result
+    }
+
+  /**
     * Build the SQL statements and bunch them up.
     * @param jdt
     * @return Update0 - it's doobie's representation of a sql statement
@@ -76,7 +141,7 @@ trait EngineOps extends Concretizer with DatabaseOps {
       import doobie.implicits._
       jdt.values.map(jobConfigOp(_)).reduce(_ ++ _).update
     }
- 
+
   /**
     * Build the SQL statement and bunch them up
     * @param wfdt
@@ -88,6 +153,49 @@ trait EngineOps extends Concretizer with DatabaseOps {
       wfdt.values.map(workflowConfigOp(_)).reduce(_ ++ _).update
     }
 
+  /** 
+    * Adds new workflow configuration to the database table [[workflow_template]]
+    * @param wfConfig
+    * @return sql object
+    */
+  def addNewWorkflowToDatabase : Reader[WorkflowConfig, Update0] = Reader{ (wfConfig: WorkflowConfig) ⇒
+    import doobie.implicits._
+    workflowConfigOp(wfConfig).update
+  }
+
+  /** 
+    * Adds new job configuration to the database table [[job_template]]
+    * @param jobConfig
+    * @return number of database rows
+    */
+  def addNewJobToDatabase : Reader[JobConfig, Update0] = Reader{ (jobConfig: JobConfig) ⇒
+    import doobie.implicits._
+    jobConfigOp(jobConfig).update
+  }
+
+  /**
+    * Updates the database table [[workflow_rt]] for the matching workflowId
+    * to the passed-in state
+    * @param wfStatus 
+    * @param wfId
+    * @return sql object
+    */
+  def updateWorkflowStatusToDatabase(wfStatus: WorkflowStates.States) : Reader[WorkflowId, Update0] = Reader{ (wfId: WorkflowId) ⇒
+    import doobie.implicits._
+    updateWorkflowStatusRT(wfStatus)(wfId).update
+  }
+
+  /**
+    * Builds the sql object to update the database table [[job_rt]] for the
+    * jobs to the passed-in state 
+    * @param jobStatus
+    * @param jobs
+    * @return sql object
+    */
+  def updateJobStatusToDatabase(jobStatus: JobStates.States) : Reader[List[Job], Update0] = Reader{ (jobs: List[Job]) ⇒
+    import doobie.implicits._
+    jobs.map(job ⇒ updateJobStatusRT(jobStatus)(job.id)).reduce(_ ++ _).update
+  }
 
   /**
     * The primary validation scheme here would be to make sure the runners

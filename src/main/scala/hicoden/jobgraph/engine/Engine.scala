@@ -91,17 +91,22 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * You should ever do this just once - treat it as a RESET.
     * When passed the command line options
     * "--initDb=yes" we basically re-create the data information as in the
-    * configuration files.
+    * configuration files but if this commandline option is omitted or carries
+    * the value 'no' then it is meant to lift the configuration from the
+    * database.
     */
-  override def preStart() = {
+  override def preStart() = { if (!jobNamespaces.isEmpty && !workflowNamespaces.isEmpty) init() }
+
+  def init() = {
     for { (l,r) <- prepareDescriptorTables(jobNamespaces, workflowNamespaces) :: Nil } { jdt = l; wfdt = r }
 
-    initDb.fold({}){ _ ⇒
+    initDb.fold{ for { (l, r) ← loadAllConfigTemplatesFromDatabase :: Nil} {jdt = l; wfdt = r} }{ _ ⇒
       import Transactors.y._
       (deleteAllWorkflowTemplates.run.attempt        *>
        deleteAllJobTemplates.run.attempt             *>
        fillDatabaseWorkflowConfigs(wfdt).run.attempt *>
-       fillDatabaseJobConfigs(jdt).run.attempt).quick.unsafeRunSync}
+       fillDatabaseJobConfigs(jdt).run.attempt        ).quick.unsafeRunSync
+    }
 
     mesosConfig    = loadMesosConfig.fold(whenUnableToLoadConfig("Mesos")(_), _.some)
     jobgraphConfig = loadEngineConfig.fold(whenUnableToLoadConfig("Engine")(_), _.some)
@@ -149,7 +154,7 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     //     to start.
     case UpdateWorkflow(wfId, jobId, signal) ⇒
       logger.info(s"[Engine][UpdateWorkflow] Going to update wf:$wfId, job:$jobId for signal: $signal")
-      updateWorkflow(wfId)(jobId)(signal).bimap(
+      updateWorkflowDbNInmemory(wfId)(jobId)(signal).bimap(
         (error: Exception) ⇒ {
           logFailure.run(error) >>
           dropWorkflowFromActive(activeWorkflows, failedWorkflows)(wfId).bimap(
@@ -197,20 +202,27 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
       }
 
 
-    // De-activation means that we update the state of the workflow to
-    // 'forced_termination' and the workers will be shutdown.
+    // De-activation means that we update the state (both in-memory and
+    // database) of the workflow to 'forced_termination' and the workers
+    // will be shutdown.
     case StopWorkflow(wfId) ⇒
       Either.cond(activeWorkflows.contains(wfId),
       {
+        import doobie.postgres._
+        import Transactors.y._
         for {
-          ns  ← EitherT(stopWorkflow(wfId))
-          wfs ← EitherT(deactivateWorkers(wfId)(activeWorkflows))
-          dfs ← EitherT(cancelGoogleDataflowJobs(wfId)(activeDataflows))
+          ns   ← EitherT(stopWorkflow(wfId))
+          wfs  ← EitherT(deactivateWorkers(wfId)(activeWorkflows))
+          dfs  ← EitherT(cancelGoogleDataflowJobs(wfId)(activeDataflows))
         } yield {
-          logger.info("[Engine][StopWorkflow] {} nodes were updated for workflow id:{} and should be stopped.", ns, wfId)
-          activeWorkflows = wfs
-          activeDataflows = dfs
+          (updateWorkflowStatusToDatabase(WorkflowStates.forced_termination)(wfId).run.attempt *> 
+           updateJobStatusToDatabase(JobStates.forced_termination)(ns).run.attempt *>
+           {activeWorkflows = wfs}.pure[ConnectionIO] *>
+           {activeDataflows = dfs}.pure[ConnectionIO]
+          ).quick.unsafeRunSync
+          logger.info("[Engine][StopWorkflow] {} nodes were updated for workflow id:{} and should be stopped.", ns.size, wfId)
         }
+
       },
         logger.error("[Engine][StopWorkflow] Attempting to stop a workflow id:{} that does not exist!", wfId)
       )
@@ -221,13 +233,29 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
         sender() ! none
         }{
         (workflowConfig: WorkflowConfig) ⇒
+          import doobie.postgres._
+          import Transactors.y._
           val current = wfdt.size
-          wfdt = addNewWorkflow(workflowConfig).runS(wfdt).value
-          val newSize = wfdt.size
-          logger.info(s"[Engine] workflow has been added to repository: $current -> $newSize")
-          logger.debug(s"[Engine][Internal] workflow descriptors tables has been updated.")
-          sender() ! Some(cfg.id)
-      }
+
+          addNewWorkflowToDatabase(workflowConfig).run.attemptSomeSqlState {
+            case sqlstate.class23.UNIQUE_VIOLATION ⇒
+              logger.error("Database unique violation!")
+              sender() ! None
+          }.map(r ⇒
+            if (r.isRight) {
+              wfdt = addNewWorkflow(workflowConfig).runS(wfdt).value
+              val newSize = wfdt.size
+              if ((newSize - current) == 0)
+                logger.info(s"[Engine] workflow has been added to repository: $current -> $newSize")
+              else logger.info(s"[Engine] workflow has not been added to repository.")
+
+              sender() ! Some(cfg.id)
+            } else {
+              logger.error(s"[Engine] caught some unhandled exception: $r")
+              sender() ! None
+            }
+          ).quick.unsafeRunSync
+        }
 
     case ValidateJobSubmission(cfg) ⇒
       validateJobSubmission(jdt)(cfg).fold{
@@ -235,12 +263,28 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
         sender() ! none
         }{
           (jobCfg: JobConfig) ⇒
+            import doobie.postgres._
+            import Transactors.y._
             val current = jdt.size
-            jdt = addNewJob(jobCfg).runS(jdt).value
-            val newSize = jdt.size
-            logger.info(s"[Engine] job has been added to repository: $current -> $newSize")
-            logger.info(s"[Engine] job has been added to repository: $current -> $newSize")
-            sender() ! Some(jobCfg.id) 
+
+            addNewJobToDatabase(jobCfg).run.attemptSomeSqlState{
+              case sqlstate.class23.UNIQUE_VIOLATION ⇒
+                logger.error("Unable to insert record into 'job_template' because of UNIQUE_VIOLATION")
+                sender() ! None
+            }.map(r ⇒
+              if (r.isRight) {
+                jdt = addNewJob(jobCfg).runS(jdt).value
+                val newSize = jdt.size
+                if ((newSize - current) == 0)
+                  logger.info(s"[Engine] job has been added to repository: $current -> $newSize")
+                else logger.info(s"[Engine] job has not been added to repository")
+
+                sender() ! Some(jobCfg.id)
+              } else {
+                logger.error(s"[Engine] caught some unhandled exception: $r")
+                sender() ! None
+              }
+            ).quick.unsafeRunSync
         }
 
     case WorkflowRuntimeReport(workflowId) ⇒ sender() ! getWorkflowStatus(workflowId)
@@ -254,7 +298,7 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
       val validationResult =
         payload.as[JobConfigOverrides].bimap(decodingFailure ⇒ false, data ⇒ validateJobOverrides(jdt)(data).fold(false)(_ ⇒ true)).toOption
       sender() ! validationResult
-      
+
     case Terminated(child) ⇒
       val (xs, result) = removeFromLookup(child).run(workersToWfLookup).value
       workersToWfLookup = xs

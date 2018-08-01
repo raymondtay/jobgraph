@@ -84,7 +84,7 @@ object RunnerData {
     sessionid   ← alphaStr.suchThat(! _.isEmpty)
     runner      ← genJavaRunner
     restartPol  ← genRestartPolicy
-  } yield JobConfig(id, name, description, "target/scala-2.12", sessionid, restartPol, runner, Nil, Nil)
+  } yield JobConfig(id, name, description, "target/scala-2.12", sessionid, restartPol, runner)
 
   def genPythonJobConfig = for {
     id          ← posNum[Int]
@@ -93,7 +93,7 @@ object RunnerData {
     sessionid   ← alphaStr.suchThat(! _.isEmpty)
     runner      ← genPythonRunner
     restartPol  ← genRestartPolicy
-  } yield JobConfig(id, name, description, "src/test/scripts", sessionid, restartPol, runner, Nil, Nil)
+  } yield JobConfig(id, name, description, "src/test/scripts", sessionid, restartPol, runner)
 
 }
 
@@ -130,8 +130,8 @@ class DataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification with
   implicit val actorMaterializer = ActorMaterializer()
 
   def afterAll() = {
-    actorSystem.terminate() 
     actorMaterializer.shutdown()
+    actorSystem.terminate() 
   }
 
   val minimumNumberOfTests = 20
@@ -188,8 +188,8 @@ class MesosDataflowRunnerSpecs(implicit ee : ExecutionEnv) extends Specification
   implicit val actorMaterializer = ActorMaterializer()
 
   def afterAll() = {
-    actorSystem.terminate() 
     actorMaterializer.shutdown()
+    actorSystem.terminate() 
   }
 
   val minimumNumberOfTests = 20

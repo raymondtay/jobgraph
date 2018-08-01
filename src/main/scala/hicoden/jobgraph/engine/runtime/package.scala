@@ -26,7 +26,8 @@ package object runtime {
       sessionid     ← c.getOrElse("sessionid")(none[String])
       runnerRunner  ← c.getOrElse("runnerRunner")(none[String])
       runnerCliargs ← c.getOrElse("runnerCliArgs")(none[List[String]])
-    } yield JobOverrides(id, description, workdir, sessionid, runnerRunner, runnerCliargs)
+      toPersist     ← c.getOrElse("persist")(false)
+    } yield JobOverrides(id, description, workdir, sessionid, runnerRunner, runnerCliargs, toPersist)
   }
 
   //implicit val jobConfigOverridesDecoder

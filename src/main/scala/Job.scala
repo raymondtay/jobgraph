@@ -30,11 +30,14 @@ object JobStates extends Enumeration {
   val inactive, start, active, forced_termination, finished = Value
 }
 
-// Note: the state "done" does not differentiate between forced termination of
-// ANY of its jobs nor normal completion. Maybe we might make it more specific.
+// All workflows start at the 'not_started' state, then it would progress to
+// the 'started' state when at least 1 of its jobs have started and if it was
+// stopped then the state would enter `forced_termination` otherwise it would
+// enter `finished` (note: in 'finished' state, jobgraph does not distinguished
+// between OK/Failed runs)
 object WorkflowStates extends Enumeration {
   type States = Value
-  val not_started, started, done = Value
+  val not_started, started, finished, forced_termination = Value
 }
 
 sealed trait Step {
@@ -134,12 +137,12 @@ trait WorkflowOps extends WorkflowImplicits {
     * forced_termination
     * @param wfId - workflow id
     * @return either a [[Either.Left]] value to indicate what went wrong or a
-    * [[Either.Right]] to indicate a success (the payload carried is some number indicating number of job nodes updated or nothing)
+    * [[Either.Right]] to indicate a success (the payload carried is either an empty container or a list of updated nodes)
     */
-  def stopWorkflow : Reader[WorkflowId, Either[String, Option[Int]]] = Reader{ (wfId: WorkflowId) ⇒
-    work.find(_.id equals wfId).fold[Either[String, Option[Int]]](Left(s"Cannot discover workflow of the id: $wfId")){ workflow ⇒
+  def stopWorkflow : Reader[WorkflowId, Either[String, List[Job]]] = Reader{ (wfId: WorkflowId) ⇒
+    work.find(_.id equals wfId).fold[Either[String, List[Job]]](Left(s"Cannot discover workflow of the id: $wfId")){ workflow ⇒
       val updatedNodes = workflow.jobgraph.labNodes.map(labeledNode ⇒ updateNodeState(JobStates.forced_termination)(labeledNode.vertex))
-      if (updatedNodes.isEmpty) { none.asRight } else { (updatedNodes.size).some.asRight }
+      if (updatedNodes.isEmpty) { List.empty[Job].asRight } else { updatedNodes.toList.asRight }
     }
   }
 
@@ -217,7 +220,7 @@ trait WorkflowOps extends WorkflowImplicits {
       workflow ⇒
       WorkflowStatus(createTime = workflow.create_timestamp,
                      status     = if (isWorkflowStarted(workflow) && !isWorkflowDone(workflow)) WorkflowStates.started
-                                  else if (isWorkflowStarted(workflow) && isWorkflowDone(workflow)) WorkflowStates.done
+                                  else if (isWorkflowStarted(workflow) && isWorkflowDone(workflow)) WorkflowStates.finished
                                   else WorkflowStates.not_started,
                      steps      = workflow.jobgraph.nodes.map(render(_)).toList).some
     } 

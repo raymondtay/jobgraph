@@ -4,7 +4,7 @@ package hicoden.jobgraph.configuration.workflow.model
   * Using [PureConfig](https://github.com/pureconfig/pureconfig) to lift the
   * boilerplate code into data models which can be leveraged efficiently here.
   */
-case class WorkflowConfig(id : Int, name : String, description : String, steps : List[Int], jobgraph : List[String])
+case class WorkflowConfig(id : Int, name : String, description : String, jobgraph : List[String])
 
 /**
   * This model captures and represents what is considered overrideable as
@@ -16,7 +16,8 @@ case class JobOverrides(
   workdir       : Option[String],
   sessionid     : Option[String],
   runnerRunner  : Option[String],
-  runnerCliArgs : Option[List[String]]
+  runnerCliArgs : Option[List[String]],
+  persist       : Boolean = false
 )
 
 // This model supports the user to be able to override the defaults (i.e.

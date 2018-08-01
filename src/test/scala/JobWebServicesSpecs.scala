@@ -2,6 +2,7 @@ package hicoden.jobgraph.engine
 
 import hicoden.jobgraph.configuration.step.model.{Runner, JobConfig, Restart, RunnerType, ExecType}
 
+import org.specs2.specification.BeforeAfterAll
 import org.specs2.mutable.Specification
 import akka.testkit._ // for the 'dilated' method
 import akka.http.scaladsl.model.StatusCodes
@@ -46,7 +47,7 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← validRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner, Nil, Nil)
+  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner)
 
   val validJobConfigs2 : Gen[JobConfig] = for {
     name ← alphaStr
@@ -55,7 +56,7 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← validRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 34, name, description, workdir, sessionid, restart, runner, Nil, Nil)
+  } yield JobConfig(id = 34, name, description, workdir, sessionid, restart, runner)
 
   val invalidJobConfigs3 : Gen[io.circe.Json] =
     oneOf(
@@ -79,7 +80,7 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← validRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner, Nil, Nil)
+  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner)
 
   private
   val jobConfigWithNonExistingIdInvalidRunner : Gen[JobConfig] = for {
@@ -89,13 +90,13 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← invalidRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 0, name, description, workdir, sessionid, restart, runner, Nil, Nil)
+  } yield JobConfig(id = 0, name, description, workdir, sessionid, restart, runner)
 
   val invalidJobConfigs = oneOf(jobConfigWithExistingId, jobConfigWithNonExistingIdInvalidRunner)
 }
 
 trait JobSpecsFunctions {
-  
+
   import cats._, data._, implicits._
   import io.circe._, io.circe.parser._
 
@@ -140,7 +141,7 @@ trait JobSpecsFunctions {
 
 }
 
-class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWebServices with JobSpecsFunctions {
+class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWebServices with JobSpecsFunctions with BeforeAfterAll {
 
   import cats._, data._, implicits._
   import io.circe._, io.circe.parser._
@@ -148,7 +149,10 @@ class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWeb
   val actorSystem = system
   val actorMaterializer = materializer
 
-  val engine = system.actorOf(akka.actor.Props(classOf[Engine], None, "jobs"::"jobs2"::"jobs3"::"jobs4"::Nil, "workflows"::Nil))
+  override def beforeAll() = {}
+  override def afterAll() = { actorMaterializer.shutdown();  actorSystem.terminate() }
+
+  val engine = system.actorOf(akka.actor.Props(classOf[Engine], Some(true), "jobs"::"jobs2"::"jobs3"::Nil, "workflows"::Nil))
 
   sequential // all specifications are run sequentially
   implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated) // need to dilate time on slower build systems.
@@ -179,7 +183,7 @@ class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWeb
         mediaType shouldEqual `application/json`
       }
     }
- 
+
     "return a HTTP-420 code when the job does exist in the system and the job is not registered." in {
       import JobConfigDummyData._
       import io.circe.syntax._
@@ -194,7 +198,7 @@ class JobWebServicesSpecs extends Specification with Specs2RouteTest with JobWeb
         mediaType shouldEqual `application/json`
       }
     }
- 
+
   }
 
   "When querying for job(s) in the system" in {

@@ -2,6 +2,7 @@ package hicoden.jobgraph.engine
 
 import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 
+import org.specs2.specification.BeforeAfterAll
 import org.specs2.mutable.Specification
 import akka.http.scaladsl.model.StatusCodes
 import akka.testkit._ // for the 'dilated' method
@@ -28,8 +29,7 @@ object WorkflowDummyData {
     id          ← posNum[Int]
     name        ← alphaStr
     description ← alphaStr
-    steps       ← listOfN(3, oneOf(1,2,3))
-  } yield WorkflowConfig(id, name, description, steps, Nil)
+  } yield WorkflowConfig(id, name, description, Nil)
 }
 
 
@@ -93,13 +93,19 @@ trait WorkflowSpecsFunctions {
 
 }
 
-class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with WorkflowWebServices with WorkflowSpecsFunctions {
+class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with WorkflowWebServices with WorkflowSpecsFunctions with BeforeAfterAll {
 
   import cats._, data._, implicits._
   import io.circe._, io.circe.parser._
 
   val actorSystem = system
   val actorMaterializer = materializer
+
+  override def beforeAll() = {}
+  override def afterAll() = {
+    actorMaterializer.shutdown()
+    actorSystem.terminate()
+  }
 
   sequential
   implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated)
@@ -130,18 +136,24 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
 
 }
 
-class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with WorkflowWebServices with WorkflowSpecsFunctions {
+class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with WorkflowWebServices with WorkflowSpecsFunctions with BeforeAfterAll {
   import cats._, data._, implicits._
   import io.circe._, io.circe.parser._
 
   val actorSystem = system
   val actorMaterializer = materializer
 
+  override def beforeAll() = {}
+  override def afterAll() = {
+    actorMaterializer.shutdown()
+    actorSystem.terminate()
+  }
+
   sequential
   implicit val routeTimeout = RouteTestTimeout(3.seconds.dilated)
 
   // `engine` here loads all the jobs defined in the "jobs" namespaces
-  val engine = system.actorOf(akka.actor.Props(classOf[Engine], None, "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))
+  val engine = system.actorOf(akka.actor.Props(classOf[Engine], Some(true), "jobs"::"jobs2"::"jobs3"::Nil, "workflows" :: Nil))
 
   "When submitting a ReST call to the Engine to create a workflow" should {
     import WorkflowDummyData._
@@ -180,7 +192,6 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
         WorkflowConfig(id = 42,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
-                       steps = List(0, 1, 2),
                        jobgraph = List("0 -> 1", "1 -> 1")) // note: jobgraph contains a loop
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
@@ -196,7 +207,6 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
         WorkflowConfig(id = 42,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
-                       steps = List(0, 1, 2),
                        jobgraph = List("99 -> 98", "98 -> 99")) // note: jobgraph contains references to non-existent job descriptors
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
@@ -212,7 +222,6 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
         WorkflowConfig(id = 1,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
-                       steps = List(0, 1, 2),
                        jobgraph = List("99 -> 98", "98 -> 99")) // note: jobgraph contains references to non-existent job descriptors
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
@@ -225,10 +234,9 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
     "return a HTTP-200 code when json payload is detected (workflow config is valid format) and Engine accepted it." in {
       import io.circe.generic.auto._, io.circe.syntax._
       val wfConfig =
-        WorkflowConfig(id = 42,
+        WorkflowConfig(id = 111,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
-                       steps = List(0, 1, 2),
                        jobgraph = List("0 -> 1", "1 -> 2")) // note: jobgraph is a DAG
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
@@ -245,10 +253,9 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
     "return a HTTP-200 code when the workflow submission succeeded when started." in {
       import io.circe.generic.auto._, io.circe.syntax._
       val wfConfig =
-        WorkflowConfig(id = 43,
+        WorkflowConfig(id = 112,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
-                       steps = List(0, 1, 2),
                        jobgraph = List("0 -> 1", "1 -> 2")) // note: jobgraph is a DAG
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
@@ -283,10 +290,9 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
 
       import io.circe.generic.auto._, io.circe.syntax._
       val wfConfig =
-        WorkflowConfig(id = 44,
+        WorkflowConfig(id = 113,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
-                       steps = List(0, 1, 2),
                        jobgraph = List("0 -> 1", "1 -> 2")) // note: jobgraph is a DAG
 
       var workflowId : hicoden.jobgraph.WorkflowId = null
@@ -360,9 +366,19 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
       }
     }
 
-    "the Engine will refuse to start a workflow (referred index ∉ existing indices) even if the job overrides is (a) valid JSON; (b) job id exists; (c) overrides check out OK" in {
-      val payload = s"""{"overrides":[{"id":0, "description":"A test description"}]}""" // simulates the payload from an http client
+    "the Engine will refuse to start a workflow (referred index ∉ existing workflow indices) even if the job overrides is (a) valid JSON; (b) job id exists; (c) overrides check out OK" in {
+      val payload = s"""{"overrides":[{"id":0, "description":"A test description", "persist": true}]}""" // simulates the payload from an http client
       val fakeWorkflowId = 9
+      Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
+        status shouldEqual BadRequest
+        mediaType shouldEqual `application/json`
+        responseAs[io.circe.Json] shouldEqual parse(s"""{"errors":["No such workflow index/id found: $fakeWorkflowId"]}""").getOrElse(Json.Null)
+      }
+    }
+
+    "the Engine will refuse to start a workflow (referred index ∉ existing workflow indices) even if the job overrides is (a) valid JSON; (b) job id exists; (c) overrides check out OK" in {
+      val payload = s"""{"overrides":[{"id":100, "description":"A test description", "persist": false}]}""" // simulates the payload from an http client; leaving the field "persist" absent is the same as labelling as 'false'.
+      val fakeWorkflowId = 99
       Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
         status shouldEqual BadRequest
         mediaType shouldEqual `application/json`

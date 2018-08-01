@@ -161,7 +161,7 @@ class JobFSMRestartSpecs(_system: ActorSystem) extends TestKit(_system) with
                   description="fake description",
                   workdir="",sessionid="",
                   Restart(1), // maximum allowed restarts
-                  runner=null,Nil, Nil) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
+                  runner=null) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
       val job = Job(name = "Test Job", config = jobConfig)
       val wfId = java.util.UUID.randomUUID
       val engineRef = master
@@ -179,7 +179,7 @@ class JobFSMRestartSpecs(_system: ActorSystem) extends TestKit(_system) with
                   description="fake description",
                   workdir="",sessionid="",
                   Restart(1), // maximum allowed restarts
-                  runner=null,Nil, Nil) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
+                  runner=null) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
       val job = Job(name = "Test Job", config = jobConfig)
       val wfId = java.util.UUID.randomUUID
       val engineRef = master
@@ -196,7 +196,7 @@ class JobFSMRestartSpecs(_system: ActorSystem) extends TestKit(_system) with
                   description="fake description",
                   workdir="",sessionid="",
                   Restart(1), // maximum allowed restarts
-                  runner=null,Nil, Nil) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
+                  runner=null) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
       val job = Job(name = "Test Job", config = jobConfig)
       val wfId = java.util.UUID.randomUUID
       val engineRef = master
