@@ -69,7 +69,7 @@ class DbOpsSpecs extends Specification with ScalaCheck with DatabaseOps { def is
   def insertWfDAGOk = {
     // Generates a sample workflow
     val wf = WorkflowDAG.graphGen
-    workflowRtOp(wf) must beAnInstanceOf[Free[ConnectionIO, _]] // take note we are not actually performing a database insert here.
+    workflowRtOp(wf) must beAnInstanceOf[Fragment] // take note we are not actually performing a database insert here.
   }
 
 }

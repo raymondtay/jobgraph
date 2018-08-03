@@ -35,7 +35,7 @@ import java.util.UUID
 //     and decide what to do next.
 //
 
-case class StartWorkflow(workflowId: Int)
+case class StartWorkflow(jobOverrides: Option[io.circe.Json], workflowId: Int)
 case class StopWorkflow(workflowId: WorkflowId)
 case class UpdateWorkflow(workflowId : WorkflowId, jobId: JobId, signal: JobStates.States)
 case class SuperviseJob(workflowId: WorkflowId, jobId: JobId, googleDataflowId: String)
@@ -117,20 +117,30 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     None
   }
 
-  override def preRestart(cause: Throwable, msg: Option[Any]) {}
-
-  def receive : PartialFunction[Any, Unit] = {
-
-    case StartWorkflow(workflowId) ⇒
-      sender !
-      extractWorkflowConfigBy(workflowId)(jdt, wfdt).fold{
-        logger.error(s"[Engine][StartWorkflow] The workflow-id giving: $workflowId does not exist in the system")
-        "No such id"
-        }{
-          (nodeEdges) ⇒
-            val jobGraph = createWf(wfdt.get(workflowId), nodeEdges._1)(nodeEdges._2)
+  /**
+    * HOF where we extract the workflow configuration (referenced by the index
+    * `workflowId`) and if we don't discover it we do (a); else we construct
+    * the workflow and insert into the database and if fail we do (b) ;finally
+    * the workflow needs workers to run and if we fail in that we do (c)
+    * otherwise we will return runtime workflow id (which is a UUID-like tag)
+    * (a) "No such id"
+    * (b) "Database operation failed, unable to start workflow"
+    *
+    * @param wfdt
+    * @param jdt
+    * @param workflowId
+    * @return the UUID workflow id or (a) / (b) or (c)
+    */
+  def attemptStartWorkflow(jobOverrides : Option[JobConfigOverrides], wfdt: WorkflowDescriptorTable, jdt: JobDescriptorTable) = Reader{ (workflowId: Int) ⇒
+    extractWorkflowConfigBy(workflowId)(jdt, wfdt).fold{
+      logger.error(s"[Engine][StartWorkflow] The workflow-id giving: $workflowId does not exist in the system")
+      "No such id"
+      }{
+        (nodeEdges) ⇒
+          val jobGraph = createWf(wfdt.get(workflowId), nodeEdges._1)(nodeEdges._2)
+          insertNewWorkflowIntoDatabase(jobOverrides)(jobGraph).fold(s"Database operation failed, unable to start workflow: [$workflowId]"){ totalRowsInserted ⇒
             logger.debug("[Engine] Received a job graph id:{}", jobGraph.id)
-            val workers = startWorkflow(jobGraph.id).fold(Set.empty[(ActorRef, Job)])(createWorkers(_))
+            val workers = startWorkflow(jobGraph.id).fold(Set.empty[(akka.actor.ActorRef, Job)])(createWorkers(_))
             if (workers.isEmpty) {
               logger.error("""
                 [Engine] We just started a workflow {} where there are no start nodes.
@@ -139,12 +149,31 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
               jobGraph.id.toString
             } else {
               activateWorkers(jobGraph.id)(workers)
+              jobGraph.status = WorkflowStates.started
+              updateWorkflowStatusToDatabase(jobGraph.status)(jobGraph.id).run.transact(Transactors.xa).unsafeRunSync
               workersToWfLookup = addToLookup(jobGraph.id)(workers).runS(workersToWfLookup).value
               activeWorkflows   = addToActive(jobGraph.id)(workers).runS(activeWorkflows).value
               logger.info("[Engine] Started a job graph")
               jobGraph.id.toString
             }
-      }
+        }
+    }
+  }
+
+  override def preRestart(cause: Throwable, msg: Option[Any]) {}
+
+  def receive : PartialFunction[Any, Unit] = {
+
+    case StartWorkflow(payload, workflowId) ⇒
+      import io.circe.generic.auto._, io.circe.syntax._
+
+      if (payload.isEmpty) {
+        sender() ! attemptStartWorkflow(None, wfdt, jdt)(workflowId)
+      } else
+        payload.get.as[JobConfigOverrides].bimap(decodingFailure ⇒ None, identity).toOption.fold{
+          logger.error(s"[Engine] Starting of workflow index: [$workflowId] has failed due to invalid job overrides - this shouldn't happen.")
+          sender() ! s"Unable to start workflow: [$workflowId] because of json decoding failure"
+        }{ jobOverrides ⇒ sender() ! attemptStartWorkflow(jobOverrides.some, wfdt, jdt)(workflowId) }
 
     // Updating the workflow effectively means we do a few things:
     // (a) Update the job's state for the workflow and if something happens
@@ -179,7 +208,10 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
                   logger.info(s"[Engine][UpdateWorkflow] Successfully started new workers for jobs : $jobs.")
                   activeWorkflows = a; workersToWfLookup = b
               }
-            } else logger.info(s"[Engine][UpdateWorkflow] Nothing to do for wf: $wfId")
+            } else {
+              updateWorkflowStatusToDatabase(WorkflowStates.finished)(wfId).run.transact(Transactors.xa).unsafeRunSync
+              logger.info(s"[Engine][UpdateWorkflow] Nothing to do for wf: $wfId")
+            }
           }
         }
       )
@@ -209,7 +241,8 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
       Either.cond(activeWorkflows.contains(wfId),
       {
         import doobie.postgres._
-        import Transactors.y._
+        val rollbackXa = doobie.util.transactor.Transactor.oops.set(Transactors.xa, HC.rollback)
+
         for {
           ns   ← EitherT(stopWorkflow(wfId))
           wfs  ← EitherT(deactivateWorkers(wfId)(activeWorkflows))
@@ -219,7 +252,7 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
            updateJobStatusToDatabase(JobStates.forced_termination)(ns).run.attempt *>
            {activeWorkflows = wfs}.pure[ConnectionIO] *>
            {activeDataflows = dfs}.pure[ConnectionIO]
-          ).quick.unsafeRunSync
+          ).transact(rollbackXa).unsafeRunSync
           logger.info("[Engine][StopWorkflow] {} nodes were updated for workflow id:{} and should be stopped.", ns.size, wfId)
         }
 
@@ -227,7 +260,7 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
         logger.error("[Engine][StopWorkflow] Attempting to stop a workflow id:{} that does not exist!", wfId)
       )
 
-    case ValidateWorkflowSubmission(cfg) ⇒ 
+    case ValidateWorkflowSubmission(cfg) ⇒
       validateWorkflowSubmission(jdt, wfdt)(cfg).fold{
         logger.error(s"[Engine][Internal] Unable to validate the workflow submission : ${cfg}")
         sender() ! none
@@ -239,7 +272,7 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
 
           addNewWorkflowToDatabase(workflowConfig).run.attemptSomeSqlState {
             case sqlstate.class23.UNIQUE_VIOLATION ⇒
-              logger.error("Database unique violation!")
+              logger.error(s"Database unique violation for workflow: [${workflowConfig}]")
               sender() ! None
           }.map(r ⇒
             if (r.isRight) {

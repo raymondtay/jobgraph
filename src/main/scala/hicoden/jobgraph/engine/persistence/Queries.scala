@@ -60,7 +60,7 @@ trait DatabaseOps extends FragmentFunctions {
     * @return a ConnectionIO[Int] object, when run indicates how many rows were
     * inserted.
     */
-  def workflowRtOp : Reader[Workflow,ConnectionIO[Int]] = Reader{ (rec: Workflow) ⇒
+  def workflowRtOp : Reader[Workflow,Fragment] = Reader{ (rec: Workflow) ⇒
     val insertWfStatement =
       fr"insert into workflow_rt(wf_id, wf_template_id, status, job_id) values(" ++
       fr"${rec.id}, " ++
@@ -68,14 +68,13 @@ trait DatabaseOps extends FragmentFunctions {
       fr"${rec.status}, " ++
       arrayUUIDExpr(rec.jobgraph.nodes.map(_.id).toList) ++
       fr");"
-    (insertWfStatement +: rec.jobgraph.labNodes.map(n ⇒ jobRtOp(n.vertex))).reduce(_ ++ _ ).update.run
+    (insertWfStatement +: rec.jobgraph.labNodes.map(n ⇒ jobRtOp(n.vertex))).reduce(_ ++ _ )
   }
 
   /**
     * Inserts a job record into the `job_rt` table
     * @param rec
-    * @return a ConnectionIO[Int] object, when run indicates how many rows were
-    * inserted.
+    * @return a sql object, when run indicates how many rows were inserted.
     */
   def jobRtOp : Reader[Job, Fragment] = Reader{ (rec: Job) ⇒
     val insertStatement =

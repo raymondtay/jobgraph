@@ -2,7 +2,7 @@ package hicoden.jobgraph.engine
 
 import hicoden.jobgraph.configuration.workflow.model.WorkflowConfig
 
-import org.specs2.specification.BeforeAfterAll
+import org.specs2.specification.{BeforeAfterEach, BeforeAfterAll}
 import org.specs2.mutable.Specification
 import akka.http.scaladsl.model.StatusCodes
 import akka.testkit._ // for the 'dilated' method
@@ -136,13 +136,17 @@ class WorkflowWebServicesSpecs extends Specification with Specs2RouteTest with W
 
 }
 
-class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with WorkflowWebServices with WorkflowSpecsFunctions with BeforeAfterAll {
+class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with WorkflowWebServices with WorkflowSpecsFunctions with BeforeAfterAll with BeforeAfterEach {
   import cats._, data._, implicits._
   import io.circe._, io.circe.parser._
 
   val actorSystem = system
   val actorMaterializer = materializer
 
+  override def before() = {
+    persistence.DbFunctions.clearJobsRuntimeData(persistence.Transactors.xa)
+  }
+  override def after() = {}
   override def beforeAll() = {}
   override def afterAll() = {
     actorMaterializer.shutdown()
@@ -234,10 +238,12 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
     "return a HTTP-200 code when json payload is detected (workflow config is valid format) and Engine accepted it." in {
       import io.circe.generic.auto._, io.circe.syntax._
       val wfConfig =
-        WorkflowConfig(id = 111,
+        WorkflowConfig(id = 211,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
                        jobgraph = List("0 -> 1", "1 -> 2")) // note: jobgraph is a DAG
+
+      persistence.DbFunctions.clearWfTemplateWhere(211, persistence.Transactors.xa)
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
         status shouldEqual OK
@@ -253,10 +259,12 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
     "return a HTTP-200 code when the workflow submission succeeded when started." in {
       import io.circe.generic.auto._, io.circe.syntax._
       val wfConfig =
-        WorkflowConfig(id = 112,
+        WorkflowConfig(id = 212,
                        name = "Test workflow name",
-                       description = "Yeah, its a test",
+                       description = "Yeah, its another test",
                        jobgraph = List("0 -> 1", "1 -> 2")) // note: jobgraph is a DAG
+
+      persistence.DbFunctions.clearWfTemplateWhere(212, persistence.Transactors.xa)
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
         status shouldEqual OK
@@ -290,12 +298,14 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
 
       import io.circe.generic.auto._, io.circe.syntax._
       val wfConfig =
-        WorkflowConfig(id = 113,
+        WorkflowConfig(id = 213,
                        name = "Test workflow name",
                        description = "Yeah, its a test",
                        jobgraph = List("0 -> 1", "1 -> 2")) // note: jobgraph is a DAG
 
       var workflowId : hicoden.jobgraph.WorkflowId = null
+
+      persistence.DbFunctions.clearWfTemplateWhere(213, persistence.Transactors.xa)
 
       Post(s"/flows/create", HttpEntity(`application/json`, wfConfig.asJson.noSpaces)) ~> WorkflowWebServicesRoutes ~> check {
         status shouldEqual OK

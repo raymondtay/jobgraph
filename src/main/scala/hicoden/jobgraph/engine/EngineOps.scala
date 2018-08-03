@@ -1,6 +1,6 @@
 package hicoden.jobgraph.engine
 
-import hicoden.jobgraph.{WorkflowOps, JobStates, WorkflowStates, WorkflowId}
+import hicoden.jobgraph.{Workflow, WorkflowOps, JobStates, WorkflowStates, WorkflowId}
 import hicoden.jobgraph.configuration.engine.{Parser ⇒ EngineConfigParser}
 import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import hicoden.jobgraph.configuration.workflow.WorkflowDescriptorTable
@@ -106,11 +106,37 @@ trait EngineOps extends Concretizer with DatabaseOps {
   }
 
   /**
+    * Attempts to inserts data records into tables [[workflow_rt]] and [[job_rt]]
+    * The transaction, if failed will be rolled back and maximum timeout for
+    * this transaction is 30 secs.
+    * @param jobOverrides either its something or nothing
+    * @param workflow
+    * @param jdt
+    * @param wfdt
+    * @return either None or Some(<number of rows>)
+    */
+  def insertNewWorkflowIntoDatabase(jobOverrides: Option[JobConfigOverrides]) : Reader[Workflow, Option[Int]] = Reader{ (workflow: Workflow) ⇒
+    import doobie._
+    import doobie.implicits._ // this is where the "quick" method comes into play
+    import doobie.postgres._
+    import doobie.postgres.implicits._
+    import cats._
+    import cats.data._
+    import cats.effect.IO
+    import cats.implicits._
+    import scala.concurrent.duration._
+
+    val rollbackUponErrorXa = Transactor.oops.set(Transactors.xa, HC.rollback)
+    workflowRtOp(workflow).update.run.transact(rollbackUponErrorXa).unsafeRunTimed(30.seconds)
+  }
+
+  /**
     * Combinator function that updates both the inmemory state and database
     * state; upon a db failure it will propagate back the error to the [[Engine]]
     * Note: A maximum timeout of 10 seconds is configured - internal to this
     * function.
     * @param wfId
+    * @param wfStatus
     * @param jobId
     * @param jobStatus
     * @return a Left(exception object) or a Right(some boolean value indicating
@@ -123,12 +149,10 @@ trait EngineOps extends Concretizer with DatabaseOps {
       import Transactors.y._
       import scala.concurrent.duration._
 
-      var result : Either[Exception, Option[Boolean]] = null
-      updateJobStatusRT(jobStatus)(jobId).update.quick.attemptSql.unsafeRunTimed(10.seconds).fold{result = Left(new Exception(s"Timeout occurred! Update to job_rt failed for job: $jobId of workflow: $wfId."))}{
-        case Left(sqle) ⇒ result = Left(new Exception(s"Update to job_rt failed for job: $jobId or workflow: $wfId with error: $sqle"))
-        case Right(_)   ⇒ result = updateWorkflow(wfId)(jobId)(jobStatus)
+      updateJobStatusRT(jobStatus)(jobId).update.quick.attemptSql.unsafeRunTimed(10.seconds).fold[Either[Exception, Option[Boolean]]]{Left(new Exception(s"Timeout occurred! Update to job_rt failed for job: $jobId of workflow: $wfId."))}{
+        case Left(sqle) ⇒ Left(new Exception(s"Update to job_rt failed for job: $jobId or workflow: $wfId with error: $sqle"))
+        case Right(_)   ⇒ updateWorkflow(wfId)(jobId)(jobStatus)
       }
-      result
     }
 
   /**

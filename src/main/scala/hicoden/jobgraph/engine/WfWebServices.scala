@@ -120,9 +120,8 @@ trait WorkflowWebServices {
     Either.catchNonFatal{ req.request.entity.dataBytes.runFold(akka.util.ByteString(""))(_ ++ _) }
   }
 
-  def validateJobOverrides(implicit timeout: akka.util.Timeout) = Reader{ (data: String) ⇒
-    import io.circe._, parser._, syntax._
-    parse(data).getOrElse(Json.Null) match {
+  def validateJobOverrides(implicit timeout: akka.util.Timeout) = Reader{ (data: io.circe.Json) ⇒
+    data match {
       case Json.Null ⇒ none
       case json ⇒
         Either.catchNonFatal{Await.result( (engine ? ValidateWorkflowJobOverrides(json)).mapTo[Option[Boolean]], timeout.duration)}.toOption.flatten
@@ -143,22 +142,38 @@ trait WorkflowWebServices {
       val data = Await.result(d.mapTo[akka.util.ByteString], timeout.duration)
 
       // if the data is empty, its interpreted to mean that you want the
-      // defaults and the validation of the workflow begins .. otherwise
+      // defaults and the validation of the workflow begins; otherwise
       // we shall validate against the engine to determine whether
       // (a) JSON is valid format
       // (b) JSON properties is OK
-      if (data.utf8String.isEmpty) validateStartWorkflowRequest(someIndex).run(req) else
-      validateJobOverrides(timeout)(data.utf8String).fold(
-        complete(StatusCodes.BadRequest, prepareBadResponse(s"Requested job overrides failed upon validation"::Nil))(req)
-      )(_ ⇒ validateStartWorkflowRequest(someIndex).run(req))
+
+      import io.circe._, parser._, syntax._
+      parse(data.utf8String).toOption.fold(validateStartWorkflowRequest(None, someIndex).run(req))(someOverrides ⇒
+        validateJobOverrides(timeout)(someOverrides).fold(
+          complete(StatusCodes.BadRequest, prepareBadResponse(s"Requested job overrides failed upon validation"::Nil))(req)
+        )(_ ⇒ validateStartWorkflowRequest(someOverrides.some, someIndex).run(req)))
     }
 
-  def validateStartWorkflowRequest(someIndex: String)(implicit timeout: akka.util.Timeout) =
+  /**
+    * This function performs the following action depending on whether we saw a
+    * job overrides:
+    * 1/ If we did SEE it, we would perform (a) validate that job overrides (b)
+    *    when (a) succeeds we would submit to the [[Engine]] to attempt to
+    *    start the workflow; when (a) does not succeed then we would send back
+    *    the result to the requester indicating as such.
+    * 2/ If we did NOT see it, we would assume that the defaults for the jobs
+    *    listed in the targeted workflow is implied; the [[Engine]] would
+    *    validate that.
+    * @param jobOverrides
+    * @param someIndex - we suspect it to be a workflow index
+    * @return 
+    */
+  def validateStartWorkflowRequest(jobOverrides: Option[io.circe.Json], someIndex: String)(implicit timeout: akka.util.Timeout) =
     Reader { (req: RequestContext) ⇒
       parseAsWorkflowIndex(someIndex).fold(
         complete(StatusCodes.BadRequest, prepareBadResponse("A workflow index should be some number"::Nil))
       ){anIndex ⇒
-        Await.result((engine ? StartWorkflow(anIndex)).mapTo[String], timeout.duration) match {
+        Await.result((engine ? StartWorkflow(jobOverrides, anIndex)).mapTo[String], timeout.duration) match {
           case "No such id" ⇒ complete(StatusCodes.BadRequest, prepareBadResponse(s"No such workflow index/id found: $anIndex"::Nil))
           case workflowId ⇒ complete(prepareWorkflowResponse(workflowId))
         }

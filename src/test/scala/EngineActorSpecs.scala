@@ -29,14 +29,14 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
       val engine = system.actorOf(Props(classOf[Engine], Some(true), Nil, Nil), "Engine-1")
       val nonExistentId = 100
 
-      engine ! StartWorkflow(nonExistentId)
+      engine ! StartWorkflow(jobOverrides = None, nonExistentId)
       expectMsg("No such id")
     }
 
     "not proceed to execute if the workflow id is not found; when jobs nor workflows are loaded." in {
       val engine = system.actorOf(Props(classOf[Engine], Some(true), "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-2")
       val existentId = 1
-      engine ! StartWorkflow(existentId)
+      engine ! StartWorkflow(jobOverrides = None, existentId)
       expectMsg("No such id")
     }
 
@@ -44,7 +44,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
       val engine = system.actorOf(Props(classOf[Engine], Some(true), "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-3")
       val existentId = 18
       within(3 second) {
-        engine ! StartWorkflow(existentId)
+        engine ! StartWorkflow(jobOverrides = None, existentId)
         Thread.sleep(2000)
         expectMsgType[String] // in truth, the runtime generated workflow-id (in UUID format) is generated and returned.
       }
@@ -54,7 +54,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
       val engine = system.actorOf(Props(classOf[Engine], Some(true), "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-4")
       val existentId = 19
       within(10 second) {
-        engine ! StartWorkflow(existentId)
+        engine ! StartWorkflow(jobOverrides = None, existentId)
         Thread.sleep(4000)
         expectMsgType[String] // in truth, the runtime generated workflow-id (in UUID format) is generated and returned.
       }
@@ -64,7 +64,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
     "not proceed to execute if the workflow id is found but there's a loop; when jobs nor workflows are loaded." in {
       val engine = system.actorOf(Props(classOf[Engine], Some(true), "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-5")
       val existentId = 20
-      engine ! StartWorkflow(existentId)
+      engine ! StartWorkflow(jobOverrides = None, existentId)
       Thread.sleep(2000)
       expectMsgType[String]
     }
@@ -82,7 +82,7 @@ class EngineActorSpecs() extends TestKit(ActorSystem("EngineActorSpecs")) with I
       import hicoden.jobgraph.JobStates
       val engine = system.actorOf(Props(classOf[Engine], Some(true), "jobs_for_engine_actor_specs":: Nil, "workflows_for_engine_actor_specs" :: Nil), "Engine-7")
       val existentId = 18
-      engine ! StartWorkflow(existentId)
+      engine ! StartWorkflow(jobOverrides = None, existentId)
 
       Thread.sleep(3000) // sleep a little so that the external process can bootup.
 

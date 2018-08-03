@@ -46,7 +46,7 @@ sealed trait Step {
 
 case class Workflow(jobgraph: QGraph[Job,UUID,String], config: WorkflowConfig = null) {
   private[jobgraph] val create_timestamp : java.time.Instant = Instant.now()
-  private[jobgraph] val status : WorkflowStates.States = WorkflowStates.not_started
+  private[jobgraph] var status : WorkflowStates.States = WorkflowStates.not_started
   private[jobgraph] val id : WorkflowId = UUID.randomUUID
 }
 
