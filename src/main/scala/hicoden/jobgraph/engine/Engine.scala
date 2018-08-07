@@ -209,7 +209,10 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
                   activeWorkflows = a; workersToWfLookup = b
               }
             } else {
-              updateWorkflowStatusToDatabase(WorkflowStates.finished)(wfId).run.transact(Transactors.xa).unsafeRunSync
+              if (isWorkflowCompleted(wfId))
+                updateWorkflowStatusToDatabase(WorkflowStates.finished)(wfId).run.transact(Transactors.xa).unsafeRunSync
+              else if (isWorkflowForcedStop(wfId))
+                updateWorkflowStatusToDatabase(WorkflowStates.forced_termination)(wfId).run.transact(Transactors.xa).unsafeRunSync
               logger.info(s"[Engine][UpdateWorkflow] Nothing to do for wf: $wfId")
             }
           }

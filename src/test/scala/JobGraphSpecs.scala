@@ -310,6 +310,8 @@ class JobGraphSpecs extends mutable.Specification with ScalaCheck {
       WorkflowOps.updateWorkflow(workflow.id)(jobB.id)(JobStates.active)
       WorkflowOps.updateWorkflow(workflow.id)(jobC.id)(JobStates.finished)
       WorkflowOps.updateWorkflow(workflow.id)(jobD.id)(JobStates.forced_termination)
+      WorkflowOps.isWorkflowCompleted(workflow.id) must be_==(false)
+      WorkflowOps.isWorkflowForcedStop(workflow.id) must be_==(true) // since jobD ∈ forced_termination
       workflow.jobgraph.countNodes must be_>(0)
       workflow.jobgraph.bfs(jobA).head.state must be_==(JobStates.start)
       workflow.jobgraph.bfs(jobB).head.state must be_==(JobStates.active)

@@ -16,8 +16,7 @@ case class JobOverrides(
   workdir       : Option[String],
   sessionid     : Option[String],
   runnerRunner  : Option[String],
-  runnerCliArgs : Option[List[String]],
-  persist       : Boolean = false
+  runnerCliArgs : Option[List[String]]
 )
 
 // This model supports the user to be able to override the defaults (i.e.

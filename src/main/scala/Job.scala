@@ -226,6 +226,28 @@ trait WorkflowOps extends WorkflowImplicits {
     } 
   }
 
+  /**
+    * Check whether all job's have reached the normal completion state
+    * @param wfId
+    * @return true if all jobs have reached normal completion state; else false
+    */
+  def isWorkflowCompleted = Reader{ (wfId: WorkflowId) ⇒
+    work.find(_.id equals wfId).fold(false){
+      workflow ⇒ isWorkflowCompletedOK(workflow)
+    }
+  }
+
+  /**
+    * Check whether any jobs have reached an abnormal completion state
+    * @param wfId
+    * @return true if any jobs are terminated abnormally; else false
+    */
+  def isWorkflowForcedStop = Reader{ (wfId: WorkflowId) ⇒
+    work.find(_.id equals wfId).fold(false){
+      workflow ⇒ isWorkflowCompletedNOK(workflow)
+    }
+  }
+
   // As long as ANY of the root nodes ∉ "inactive", then its considered
   // started.
   private[jobgraph]
@@ -246,6 +268,26 @@ trait WorkflowOps extends WorkflowImplicits {
         )
     if (doneNodes.isEmpty) false else
     if (doneNodes.size == workflow.jobgraph.nodes.size) true else false
+  }
+
+  private[jobgraph]
+  def isWorkflowCompletedOK = Reader{ (workflow: Workflow) ⇒
+    val doneNodes =
+      workflow.jobgraph.nodes.filter(
+        node ⇒ node.state equals JobStates.finished
+        )
+    if (doneNodes.isEmpty) false else
+    if (doneNodes.size == workflow.jobgraph.nodes.size) true else false
+  }
+
+  private[jobgraph]
+  def isWorkflowCompletedNOK = Reader{ (workflow: Workflow) ⇒
+    val nodes =
+      workflow.jobgraph.nodes.filter(
+        node ⇒
+          node.state equals JobStates.forced_termination
+        )
+    if (nodes.isEmpty) false else true
   }
 
 }

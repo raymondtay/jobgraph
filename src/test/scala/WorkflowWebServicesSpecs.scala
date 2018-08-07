@@ -377,7 +377,7 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
     }
 
     "the Engine will refuse to start a workflow (referred index ∉ existing workflow indices) even if the job overrides is (a) valid JSON; (b) job id exists; (c) overrides check out OK" in {
-      val payload = s"""{"overrides":[{"id":0, "description":"A test description", "persist": true}]}""" // simulates the payload from an http client
+      val payload = s"""{"overrides":[{"id":0, "description":"A test description"}]}""" // simulates the payload from an http client
       val fakeWorkflowId = 9
       Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
         status shouldEqual BadRequest
@@ -387,7 +387,7 @@ class WorkflowWebServicesSpecs2 extends Specification with Specs2RouteTest with 
     }
 
     "the Engine will refuse to start a workflow (referred index ∉ existing workflow indices) even if the job overrides is (a) valid JSON; (b) job id exists; (c) overrides check out OK" in {
-      val payload = s"""{"overrides":[{"id":100, "description":"A test description", "persist": false}]}""" // simulates the payload from an http client; leaving the field "persist" absent is the same as labelling as 'false'.
+      val payload = s"""{"overrides":[{"id":100, "description":"A test description"}]}""" // simulates the payload from an http client
       val fakeWorkflowId = 99
       Put(s"/flows/$fakeWorkflowId/start", HttpEntity(`application/json`, payload)) ~> WorkflowWebServicesRoutes ~> check {
         status shouldEqual BadRequest
