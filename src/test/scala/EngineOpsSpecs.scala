@@ -58,7 +58,7 @@ class EngineOpsSpecs extends mutable.Specification with
     object t extends Parser with Loader
     import quiver.{LNode, LEdge}
 
-    val loadedJobConfigs = if (loadFalse) s.loadDefault("nonexistent" :: Nil) else s.loadDefault("jobs"::Nil)
+    val loadedJobConfigs = if (loadFalse) s.loadDefault("nonexistent" :: Nil) else s.loadDefault("jobs"::"jobs2"::"jobs3"::Nil)
     var jdt : JobDescriptorTable = scala.collection.immutable.HashMap.empty[Int, JobConfig]
     jdt = s.hydrateJobConfigs(loadedJobConfigs.toList.flatten).runS(jdt).value
 
@@ -71,7 +71,7 @@ class EngineOpsSpecs extends mutable.Specification with
   {
     "Extracting non-existent workflows from the system is pure folly." >> prop{ (workflowIndex: Int) ⇒
       val (jdt, wfdt) = loadConfigs(loadFalse = true) // make this really explicit
-      extractWorkflowConfigBy(workflowIndex)(jdt, wfdt) must beNone 
+      extractWorkflowConfigBy(workflowIndex, None)(jdt, wfdt) must beNone 
       jdt.size must be_==(0)
       wfdt.size must be_==(0)
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
@@ -81,8 +81,59 @@ class EngineOpsSpecs extends mutable.Specification with
     import EngineOpsData.arbValidWorkflowIndices
     "Extracting existent workflows from the system is should return valid configurations." >> prop{ (workflowIndex: Int) ⇒
       val (jdt, wfdt) = loadConfigs(loadFalse = false)
-      extractWorkflowConfigBy(workflowIndex)(jdt, wfdt) must beSome
+      extractWorkflowConfigBy(workflowIndex, None)(jdt, wfdt) must beSome
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
+  }
+
+  {
+    import EngineOpsData.arbValidWorkflowIndices
+    "Overriding loaded configurations with 1 job overrides should be reflected accordingly." >> prop{ (workflowIndex: Int) ⇒
+      import quiver._
+      val (jdt, wfdt) = loadConfigs(loadFalse = false) // Load all configurations
+      val overrde = JobOverrides(id = 1, description = "A really really really simple text".some, workdir = "/home/auser/directory".some, sessionid = "XOXP111".some, runnerRunner = "/path/to/some/exec".some, runnerCliArgs = List("a", "b").some )
+      val overrides = Some(JobConfigOverrides(overrides = List(overrde)))
+
+      extractWorkflowConfigBy(workflowIndex, overrides)(jdt, wfdt) must beSome{ (p:(List[LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒
+        p._1.size must be_>(0)
+        p._2.size must be_>(0)
+        val config : JobConfig = p._1.filter(gNode ⇒ gNode.vertex.config.id == 1).head.vertex.config // find the overrided configuration in the JDT
+        config.id must be_==(1)
+        config.description.some   must be_==(overrde.description)
+        config.workdir.some       must be_==(overrde.workdir)
+        config.sessionid.some     must be_==(overrde.sessionid)
+        config.runner.runner.some must be_==(overrde.runnerRunner)
+      }
+    }.set(minTestsOk = 1, workers = 1)
+  }
+
+  {
+    import EngineOpsData.arbValidWorkflowIndices
+    "Overriding loaded configurations with 2 job overrides should be reflected accordingly." >> prop{ (workflowIndex: Int) ⇒
+      import quiver._
+      val (jdt, wfdt) = loadConfigs(loadFalse = false) // Load all configurations
+      val overrde =
+        JobOverrides(id = 1, description = "A really really really simple text".some, workdir = "/home/auser/directory".some, sessionid = "XOXP111".some, runnerRunner = "/path/to/some/exec".some, runnerCliArgs = List("a", "b").some )
+      val overrde2 =
+        JobOverrides(id = 2, description = "A really really really simple text with something".some, workdir = "/home/auser/directory/subdir".some, sessionid = "XOXP112".some, runnerRunner = "/path/to/some/exec/file".some, runnerCliArgs = List("a", "b", "c").some )
+      val overrides = Some(JobConfigOverrides(overrides = List(overrde, overrde2)))
+
+      extractWorkflowConfigBy(workflowIndex, overrides)(jdt, wfdt) must beSome{ (p:(List[LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒
+        p._1.size must be_>(0)
+        p._2.size must be_>(0)
+        val config : JobConfig = p._1.filter(gNode ⇒ gNode.vertex.config.id == 1).head.vertex.config // find the overrided configuration in the JDT
+        config.id must be_==(1)
+        config.description.some   must be_==(overrde.description)
+        config.workdir.some       must be_==(overrde.workdir)
+        config.sessionid.some     must be_==(overrde.sessionid)
+        config.runner.runner.some must be_==(overrde.runnerRunner)
+        val config2 : JobConfig = p._1.filter(gNode ⇒ gNode.vertex.config.id == 2).head.vertex.config // find the overrided configuration in the JDT
+        config2.id must be_==(2)
+        config2.description.some   must be_==(overrde2.description)
+        config2.workdir.some       must be_==(overrde2.workdir)
+        config2.sessionid.some     must be_==(overrde2.sessionid)
+        config2.runner.runner.some must be_==(overrde2.runnerRunner)
+      }
+    }.set(minTestsOk = 1, workers = 1)
   }
 
   {

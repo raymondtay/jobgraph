@@ -115,7 +115,7 @@ trait EngineOps extends Concretizer with DatabaseOps {
     * @param wfdt
     * @return either None or Some(<number of rows>)
     */
-  def insertNewWorkflowIntoDatabase(jobOverrides: Option[JobConfigOverrides]) : Reader[Workflow, Option[Int]] = Reader{ (workflow: Workflow) ⇒
+  def insertNewWorkflowIntoDatabase : Reader[Workflow, Option[Int]] = Reader{ (workflow: Workflow) ⇒
     import doobie._
     import doobie.implicits._ // this is where the "quick" method comes into play
     import doobie.postgres._
@@ -272,15 +272,66 @@ trait EngineOps extends Concretizer with DatabaseOps {
    * Attempt to load the workflow by indexing its index in the configuration
    * file that was loaded (remember, by default its [[application.conf]]) 
    * @param workflowIndex
+   * @param jobOverrides
    * @param jdt
    * @param wfdt
    * @return Some((List of [[LNode]], List of [[LEdge]])) or none
    */
-  def extractWorkflowConfigBy(workflowIndex: Int)(implicit jdt : JobDescriptorTable, wfdt: WorkflowDescriptorTable) : Option[(List[LNode[Job,JobId]], List[LEdge[Job,String]])]= {
-    if (wfdt.contains(workflowIndex)) reify(jdt)(wfdt(workflowIndex)).toOption
+  def extractWorkflowConfigBy(workflowIndex: Int, jobOverrides: Option[JobConfigOverrides])(implicit jdt : JobDescriptorTable, wfdt: WorkflowDescriptorTable) : Option[(List[LNode[Job,JobId]], List[LEdge[Job,String]])]= {
+    if (wfdt.contains(workflowIndex))
+      for {
+        (nodes, edges) ← reify(jdt)(wfdt(workflowIndex)).toOption
+      } yield jobOverrides.fold((nodes, edges))(overrides ⇒ (mergeN(nodes, overrides), mergeE(edges, overrides)))
     else none
   }
 
+  // For the overridable fields of each [[Job]], we apply its corresponding
+  // template's default value iff jobgraph does not see it.
+  private
+  def merge(j : Job, o: JobOverrides) : Job =  {
+    def mergeCfg(l: JobConfig) =
+      (o.description.fold(l.description)(identity).some,
+       o.workdir.fold(l.workdir)(identity).some,
+       o.sessionid.fold(l.sessionid)(identity).some,
+       o.runnerRunner.fold(l.runner.runner)(identity).some,
+       o.runnerCliArgs.fold(l.runner.cliargs)(identity).some).mapN(
+        (d: String, cwd: String, session: String, runner: String, cliArgs: List[String]) ⇒ l.copy(description = d, workdir = cwd, sessionid = session, runner = l.runner.copy(runner = runner, cliargs = cliArgs)))
+
+      mergeCfg(j.config).fold(j)(cfg ⇒ j.copy(config = cfg))
+  }
+
+  // merges the targeted graph nodes with the appropriate job overrides
+  private
+  def mergeN(nodes: List[LNode[Job,JobId]], overrides: JobConfigOverrides) : List[LNode[Job,JobId]] = {
+    val m : Map[Int, List[JobOverrides]] = overrides.overrides.groupBy(_.id)
+    nodes.map(gNode ⇒ m.get(gNode.vertex.config.id).fold(gNode)(overrde ⇒ gNode.copy(vertex = merge(gNode.vertex, overrde.head))))
+  }
+
+  // merges the targeted graph nodes with the appropriate job overrides
+  private
+  def mergeE(edges: List[LEdge[Job,String]], overrides: JobConfigOverrides) : List[LEdge[Job,String]] = {
+    val m : Map[Int, List[JobOverrides]] = overrides.overrides.groupBy(_.id)
+    edges.map(gEdge ⇒ m.get(gEdge.from.config.id).fold(gEdge)(overrde ⇒ gEdge.copy(from = merge(gEdge.from, overrde.head)))).map(gEdge ⇒ m.get(gEdge.to.config.id).fold(gEdge)(overrde ⇒ gEdge.copy(to = merge(gEdge.to, overrde.head))))
+  }
+
+  /**
+    * Invoked iff there are job overrides during the start of a workflow either
+    * through an explicit call to the Engine actor or via a REST call e.g.
+    * /flows/<workflow index>/start with a json payload
+    * Note: no override is ever written into the [[jdt]] i.e.
+    * JobDescriptorTable as these overrides considered transient
+    * @param jdt
+    * @param overrides
+    * @return Some((List of [[LNode]], List of [[LEdge]])) or none
+    * case class JobOverrides(
+  id            : Int, // indicate to the system which job you want to be overrided when it executes
+  description   : Option[String],
+  workdir       : Option[String],
+  sessionid     : Option[String],
+  runnerRunner  : Option[String],
+  runnerCliArgs : Option[List[String]]
+)
+    */
   /**
     * Validate the job submission means that we check for a few things
     * - The job id must be distinct from the rest since it is the same id that

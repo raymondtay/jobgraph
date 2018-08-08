@@ -126,19 +126,20 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * (a) "No such id"
     * (b) "Database operation failed, unable to start workflow"
     *
+    * @param jobOverrides
     * @param wfdt
     * @param jdt
     * @param workflowId
     * @return the UUID workflow id or (a) / (b) or (c)
     */
   def attemptStartWorkflow(jobOverrides : Option[JobConfigOverrides], wfdt: WorkflowDescriptorTable, jdt: JobDescriptorTable) = Reader{ (workflowId: Int) ⇒
-    extractWorkflowConfigBy(workflowId)(jdt, wfdt).fold{
+    extractWorkflowConfigBy(workflowId, jobOverrides)(jdt, wfdt).fold{
       logger.error(s"[Engine][StartWorkflow] The workflow-id giving: $workflowId does not exist in the system")
       "No such id"
       }{
         (nodeEdges) ⇒
           val jobGraph = createWf(wfdt.get(workflowId), nodeEdges._1)(nodeEdges._2)
-          insertNewWorkflowIntoDatabase(jobOverrides)(jobGraph).fold(s"Database operation failed, unable to start workflow: [$workflowId]"){ totalRowsInserted ⇒
+          insertNewWorkflowIntoDatabase(jobGraph).fold(s"Database operation failed, unable to start workflow: [$workflowId]"){ totalRowsInserted ⇒
             logger.debug("[Engine] Received a job graph id:{}", jobGraph.id)
             val workers = startWorkflow(jobGraph.id).fold(Set.empty[(akka.actor.ActorRef, Job)])(createWorkers(_))
             if (workers.isEmpty) {
