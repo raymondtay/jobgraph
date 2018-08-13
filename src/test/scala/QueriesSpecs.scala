@@ -20,11 +20,11 @@ object WorkflowDAG {
   import quiver._
 
   val jobA =
-    Job("job-a", JobConfig(1, "job-a-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value71"::Nil)))
+    Job("job-a", JobConfig(1, "job-a-config", "test", "/tmp", "", 1, Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value71"::Nil)))
   val jobB =
-    Job("job-b", JobConfig(2, "job-b-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value72"::Nil)))
+    Job("job-b", JobConfig(2, "job-b-config", "test", "/tmp", "", 1, Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value72"::Nil)))
   val jobC =
-    Job("job-c", JobConfig(3, "job-c-config", "test", "/tmp", "", Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value73"::Nil)))
+    Job("job-c", JobConfig(3, "job-c-config", "test", "/tmp", "", 1, Restart(1), Runner("module.m", "/path/to/execfile", "--arg1=value73"::Nil)))
 
   val nodes =
     LNode(jobA, jobA.id) ::
@@ -59,6 +59,7 @@ class DbOpsSpecs extends Specification with ScalaCheck with DatabaseOps { def is
                 description = "Test Description",
                 workdir = "",
                 sessionid = "blahblah",
+                timeout = 1,
                 restart = Restart(1),
                 runner = Runner("module.m", "path/to/execfile", Nil))
     val r = jobConfigOp(jobConfig)

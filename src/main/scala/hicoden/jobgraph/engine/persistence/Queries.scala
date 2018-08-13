@@ -42,12 +42,13 @@ trait DatabaseOps extends FragmentFunctions {
     // TODO : replace using HLists
     val xs = runnerExpr.run(jobConfig.runner)
     val insertStatement =
-      fr"insert into job_template (id, name, description, workdir, sessionid, restart, runner) values(" ++
+      fr"insert into job_template (id, name, description, workdir, sessionid, timeout, restart, runner) values(" ++
       fr"${jobConfig.id}," ++
       fr"${jobConfig.name}," ++
       fr"${jobConfig.description}," ++
       fr"${jobConfig.workdir}," ++
       fr"${jobConfig.sessionid}," ++
+      fr"${jobConfig.timeout}," ++
       fr"${jobConfig.restart.max}," ++ xs ++ fr");"
     insertStatement
   }
@@ -91,7 +92,7 @@ trait DatabaseOps extends FragmentFunctions {
     sql"select * from workflow_template".query[WorkflowConfig].to[List]
 
   def selectAllJobTemplates : ConnectionIO[List[JobConfig]] =
-    sql"select id, name, description, workdir, sessionid, restart, (runner).module, (runner).runner, (runner).cliargs from job_template".query[JobConfig].to[List]
+    sql"select id, name, description, workdir, sessionid, timeout, restart, (runner).module, (runner).runner, (runner).cliargs from job_template".query[JobConfig].to[List]
 
   def deleteAllWorkflowTemplates : Update0 = sql"delete from workflow_template".update
 

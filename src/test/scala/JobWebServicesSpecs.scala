@@ -47,7 +47,8 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← validRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner)
+    timeout ← posNum[Int]
+  } yield JobConfig(id = 33, name, description, workdir, sessionid, timeout, restart, runner)
 
   val validJobConfigs2 : Gen[JobConfig] = for {
     name ← alphaStr
@@ -56,7 +57,8 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← validRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 34, name, description, workdir, sessionid, restart, runner)
+    timeout ← posNum[Int]
+  } yield JobConfig(id = 34, name, description, workdir, sessionid, timeout, restart, runner)
 
   val invalidJobConfigs3 : Gen[io.circe.Json] =
     oneOf(
@@ -80,7 +82,8 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← validRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 33, name, description, workdir, sessionid, restart, runner)
+    timeout ← posNum[Int]
+  } yield JobConfig(id = 33, name, description, workdir, sessionid, timeout, restart, runner)
 
   private
   val jobConfigWithNonExistingIdInvalidRunner : Gen[JobConfig] = for {
@@ -90,7 +93,8 @@ object JobConfigDummyData {
     sessionid ← alphaStr
     runner ← invalidRunner
     restart ← genRestartPolicy
-  } yield JobConfig(id = 0, name, description, workdir, sessionid, restart, runner)
+    timeout ← posNum[Int]
+  } yield JobConfig(id = 0, name, description, workdir, sessionid, timeout, restart, runner)
 
   val invalidJobConfigs = oneOf(jobConfigWithExistingId, jobConfigWithNonExistingIdInvalidRunner)
 }

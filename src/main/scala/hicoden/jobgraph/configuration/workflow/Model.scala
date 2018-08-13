@@ -15,6 +15,7 @@ case class JobOverrides(
   description   : Option[String],
   workdir       : Option[String],
   sessionid     : Option[String],
+  timeout       : Option[Int],
   runnerRunner  : Option[String],
   runnerCliArgs : Option[List[String]]
 )

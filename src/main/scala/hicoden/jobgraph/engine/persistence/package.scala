@@ -31,7 +31,7 @@ package object persistence {
     }
 
     def jobConfigExpr = Reader{ (c: JobConfig) ⇒
-      fr"ROW(" ++ fr"${c.name}," ++ fr"${c.description}," ++ fr"${c.sessionid}," ++ fr"${c.restart.max}, " ++ runnerExpr(c.runner) ++ fr")"
+      fr"ROW(" ++ fr"${c.name}," ++ fr"${c.description}," ++ fr"${c.sessionid}," ++ fr"${c.timeout}, " ++ fr"${c.restart.max}, " ++ runnerExpr(c.runner) ++ fr")"
     }
   }
 

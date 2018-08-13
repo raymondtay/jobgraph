@@ -11,6 +11,11 @@ DROP TABLE IF EXISTS job_rt            CASCADE;
 DROP TABLE IF EXISTS job_template      CASCADE;
 DROP TABLE IF EXISTS workflow_template CASCADE;
 
+DROP TYPE IF EXISTS Runner         CASCADE;
+DROP TYPE IF EXISTS WorkflowStates CASCADE;
+DROP TYPE IF EXISTS JobStates      CASCADE;
+DROP TYPE IF EXISTS JobConfigRT    CASCADE;
+
 -- According to postgresql docs, we cannot drop a currently or "open" 
 -- database; the solution is to enter as the superuser e.g. postgres and
 -- remove it. Uncommenting the following does not work; but leaving it here

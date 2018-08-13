@@ -40,20 +40,18 @@ object WorkflowStates extends Enumeration {
   val not_started, started, finished, forced_termination = Value
 }
 
-sealed trait Step {
-  private[jobgraph] var state = JobStates.inactive
-}
 
-case class Workflow(jobgraph: QGraph[Job,UUID,String], config: WorkflowConfig = null) {
-  private[jobgraph] val create_timestamp : java.time.Instant = Instant.now()
-  private[jobgraph] var status : WorkflowStates.States = WorkflowStates.not_started
-  private[jobgraph] val id : WorkflowId = UUID.randomUUID
-}
+case class Workflow(jobgraph: QGraph[Job,UUID,String],
+                    config: WorkflowConfig = null,
+                    create_timestamp : java.time.Instant = Instant.now(),
+                    id : WorkflowId = UUID.randomUUID,
+                    var status : WorkflowStates.States = WorkflowStates.not_started)
 
-case class Job(name: String, config: JobConfig = null) extends Step {
-  private[jobgraph] val create_timestamp : java.time.Instant = Instant.now()
-  val id : JobId = UUID.randomUUID
-}
+case class Job(name: String,
+               config: JobConfig = null,
+               create_timestamp : java.time.Instant = Instant.now(),
+               id : JobId = UUID.randomUUID,
+               var state : JobStates.States = JobStates.inactive)
 
 trait WorkflowImplicits {
   implicit val orderByCreationTime = new Ordering[Workflow] {
@@ -87,10 +85,10 @@ trait WorkflowOps extends WorkflowImplicits {
   def createWf(wfConfig: Option[WorkflowConfig], nodes: Seq[LNode[Job,UUID]]) : Reader[Seq[LEdge[Job,String]], Workflow] = Reader {
     (edges: Seq[LEdge[Job,String]]) ⇒
       wfConfig.fold{
-        val wf = Workflow(mkGraph(nodes, edges))
+        val wf = Workflow(jobgraph = mkGraph(nodes, edges))
         work += wf
         wf }{config ⇒
-        val wf = Workflow(mkGraph(nodes, edges), config)
+        val wf = Workflow(jobgraph = mkGraph(nodes, edges), config = config)
         work += wf
         wf}
   }

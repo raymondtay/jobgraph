@@ -84,7 +84,8 @@ object RunnerData {
     sessionid   ← alphaStr.suchThat(! _.isEmpty)
     runner      ← genJavaRunner
     restartPol  ← genRestartPolicy
-  } yield JobConfig(id, name, description, "target/scala-2.12", sessionid, restartPol, runner)
+    timeout     ← posNum[Int]
+  } yield JobConfig(id, name, description, "target/scala-2.12", sessionid, timeout, restartPol, runner)
 
   def genPythonJobConfig = for {
     id          ← posNum[Int]
@@ -93,7 +94,8 @@ object RunnerData {
     sessionid   ← alphaStr.suchThat(! _.isEmpty)
     runner      ← genPythonRunner
     restartPol  ← genRestartPolicy
-  } yield JobConfig(id, name, description, "src/test/scripts", sessionid, restartPol, runner)
+    timeout     ← posNum[Int]
+  } yield JobConfig(id, name, description, "src/test/scripts", sessionid, timeout, restartPol, runner)
 
 }
 

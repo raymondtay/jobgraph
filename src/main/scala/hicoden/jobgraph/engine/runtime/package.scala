@@ -24,12 +24,12 @@ package object runtime {
       description   ← c.getOrElse("description")(none[String])
       workdir       ← c.getOrElse("workdir")(none[String])
       sessionid     ← c.getOrElse("sessionid")(none[String])
+      timeout       ← c.getOrElse("timeout")(none[Int])
       runnerRunner  ← c.getOrElse("runnerRunner")(none[String])
       runnerCliargs ← c.getOrElse("runnerCliArgs")(none[List[String]])
-    } yield JobOverrides(id, description, workdir, sessionid, runnerRunner, runnerCliargs)
+    } yield JobOverrides(id, description, workdir, sessionid, timeout, runnerRunner, runnerCliargs)
   }
 
-  //implicit val jobConfigOverridesDecoder
   implicit val jobConfigEncoder: Encoder[JobConfig] = deriveEncoder[JobConfig]
   implicit val runnerConfigEncoder: Encoder[Runner] = deriveEncoder[Runner]
   implicit val restartConfigEncoder: Encoder[Restart] = deriveEncoder[Restart]

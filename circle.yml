@@ -57,6 +57,7 @@ jobs:
              description text NOT NULL,
              workdir text NOT NULL,
              sessionid text NOT NULL,
+             timeout integer NOT NULL,
              restart integer NOT NULL,
              runner Runner NOT NULL
            );"
@@ -86,6 +87,7 @@ jobs:
              name text,
              description text,
              sessionid text,
+             timeout integer,
              restart integer,
              runner Runner
            );"

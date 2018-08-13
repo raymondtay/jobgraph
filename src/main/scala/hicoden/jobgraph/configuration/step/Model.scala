@@ -29,6 +29,7 @@ case class JobConfig(id : Int,
                      description: String,
                      workdir : String,
                      sessionid : String,
+                     timeout : Int,
                      restart : Restart,
                      runner: Runner)
 

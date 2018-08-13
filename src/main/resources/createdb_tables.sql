@@ -47,17 +47,19 @@ CREATE TYPE Runner AS (
 -- 3/ `description` - description can be potentially long and also empty
 -- 4/ `sessionid` - a session identifier
 -- 5/ `restart` - how many times to automatically restart, upon failure.
--- 6/ `runner` - jobgraph will interpret this datatype and construct the
+-- 6/ `timeout` - how long (in minutes) the job should wait for completion
+-- 7/ `runner` - jobgraph will interpret this datatype and construct the
 -- necessary executable
 --
 CREATE TABLE IF NOT EXISTS job_template (
-  id integer PRIMARY KEY,
-  name varchar(256) NOT NULL,
+  id          integer PRIMARY KEY,
+  name        varchar(256) NOT NULL,
   description text NOT NULL,
-  workdir text NOT NULL,
-  sessionid text NOT NULL,
-  restart integer NOT NULL,
-  runner Runner NOT NULL
+  workdir     text NOT NULL,
+  sessionid   text NOT NULL,
+  timeout     integer NOT NULL,
+  restart     integer NOT NULL,
+  runner      Runner NOT NULL
 );
 
 -- see [[WorkflowStates]] for the in-memory model mapping
@@ -78,29 +80,30 @@ CREATE TYPE JobStates as ENUM(
 );
 
 CREATE TYPE JobConfigRT as (
-  name text,
+  name        text,
   description text,
-  sessionid text,
-  restart integer,
-  runner Runner
+  sessionid   text,
+  timeout     integer,
+  restart     integer,
+  runner      Runner
 );
 
 -- The job_rt and workflow_rt represents the runtime representation of the jobs
 -- and workflows
 CREATE TABLE IF NOT EXISTS job_rt (
-  id UUID PRIMARY KEY,
+  id              UUID PRIMARY KEY,
   job_template_id integer NOT NULL references job_template(id),
-  config JobConfigRT NOT NULL,
-  status JobStates NOT NULL
+  config          JobConfigRT NOT NULL,
+  status          JobStates NOT NULL
 );
 
--- Waiting for the '[] ELEMENT REFERENCES <table>' to be realized in PSQL 10.+
+-- Waiting for the '[] ELEMENT REFERENCES <table>' syntax to be realized in PSQL 10.+
 CREATE TABLE IF NOT EXISTS workflow_rt (
-  id serial PRIMARY KEY,
-  wf_id UUID NOT NULL,
+  id             serial PRIMARY KEY,
+  wf_id          UUID NOT NULL,
   wf_template_id integer NOT NULL references workflow_template(id),
-  status WorkflowStates NOT NULL,
-  job_id UUID[] NOT NULL
+  status         WorkflowStates NOT NULL,
+  job_id         UUID[] NOT NULL
 );
 
 -- bring back the control to jobgraphadmin

@@ -90,7 +90,7 @@ class EngineOpsSpecs extends mutable.Specification with
     "Overriding loaded configurations with 1 job overrides should be reflected accordingly." >> prop{ (workflowIndex: Int) ⇒
       import quiver._
       val (jdt, wfdt) = loadConfigs(loadFalse = false) // Load all configurations
-      val overrde = JobOverrides(id = 1, description = "A really really really simple text".some, workdir = "/home/auser/directory".some, sessionid = "XOXP111".some, runnerRunner = "/path/to/some/exec".some, runnerCliArgs = List("a", "b").some )
+      val overrde = JobOverrides(id = 1, description = "A really really really simple text".some, workdir = "/home/auser/directory".some, sessionid = "XOXP111".some, timeout = 9.some, runnerRunner = "/path/to/some/exec".some, runnerCliArgs = List("a", "b").some )
       val overrides = Some(JobConfigOverrides(overrides = List(overrde)))
 
       extractWorkflowConfigBy(workflowIndex, overrides)(jdt, wfdt) must beSome{ (p:(List[LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒
@@ -112,9 +112,9 @@ class EngineOpsSpecs extends mutable.Specification with
       import quiver._
       val (jdt, wfdt) = loadConfigs(loadFalse = false) // Load all configurations
       val overrde =
-        JobOverrides(id = 1, description = "A really really really simple text".some, workdir = "/home/auser/directory".some, sessionid = "XOXP111".some, runnerRunner = "/path/to/some/exec".some, runnerCliArgs = List("a", "b").some )
+        JobOverrides(id = 1, description = "A really really really simple text".some, workdir = "/home/auser/directory".some, sessionid = "XOXP111".some, timeout = 4.some, runnerRunner = "/path/to/some/exec".some, runnerCliArgs = List("a", "b").some )
       val overrde2 =
-        JobOverrides(id = 2, description = "A really really really simple text with something".some, workdir = "/home/auser/directory/subdir".some, sessionid = "XOXP112".some, runnerRunner = "/path/to/some/exec/file".some, runnerCliArgs = List("a", "b", "c").some )
+        JobOverrides(id = 2, description = "A really really really simple text with something".some, workdir = "/home/auser/directory/subdir".some, sessionid = "XOXP112".some, timeout = 9.some, runnerRunner = "/path/to/some/exec/file".some, runnerCliArgs = List("a", "b", "c").some )
       val overrides = Some(JobConfigOverrides(overrides = List(overrde, overrde2)))
 
       extractWorkflowConfigBy(workflowIndex, overrides)(jdt, wfdt) must beSome{ (p:(List[LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒

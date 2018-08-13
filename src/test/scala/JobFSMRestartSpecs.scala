@@ -159,7 +159,7 @@ class JobFSMRestartSpecs(_system: ActorSystem) extends TestKit(_system) with
       val jobConfig =
         JobConfig(id=0,name="fake job",
                   description="fake description",
-                  workdir="",sessionid="",
+                  workdir="",sessionid="",timeout=4,
                   Restart(1), // maximum allowed restarts
                   runner=null) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
       val job = Job(name = "Test Job", config = jobConfig)
@@ -177,7 +177,7 @@ class JobFSMRestartSpecs(_system: ActorSystem) extends TestKit(_system) with
       val jobConfig =
         JobConfig(id=0,name="fake job",
                   description="fake description",
-                  workdir="",sessionid="",
+                  workdir="",sessionid="",timeout=4,
                   Restart(1), // maximum allowed restarts
                   runner=null) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
       val job = Job(name = "Test Job", config = jobConfig)
@@ -194,7 +194,7 @@ class JobFSMRestartSpecs(_system: ActorSystem) extends TestKit(_system) with
       val jobConfig =
         JobConfig(id=0,name="fake job",
                   description="fake description",
-                  workdir="",sessionid="",
+                  workdir="",sessionid="",timeout=4,
                   Restart(1), // maximum allowed restarts
                   runner=null) // we are not running this job (since runner is null) coz we just want to test the restart behavior.
       val job = Job(name = "Test Job", config = jobConfig)

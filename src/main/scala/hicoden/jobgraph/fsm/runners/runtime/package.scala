@@ -25,7 +25,7 @@ package object runtime {
 
   // This is pretty much the runtime representation of the job's configuration
   // in [[JobConfig]].
-  case class JobContext(name: String, description: String, workdir: String, workflowId: WorkflowId, jobId: JobId, location: JobEngineLocationContext, runner: Runner)
+  case class JobContext(name: String, description: String, workdir: String, timeout : Int, workflowId: WorkflowId, jobId: JobId, location: JobEngineLocationContext, runner: Runner)
 
   // This represents the contextual information needed for the job. Take note
   // that this abstraction gives us the ability to deploy jobs to different
@@ -50,7 +50,8 @@ package object runtime {
     def manifest(wfId: WorkflowId, jobId: JobId, jgCfg: JobgraphConfig) =
       (cfg: JobConfig)⇒
         JobContext(name = cfg.name, description = cfg.description,
-                   workdir = cfg.workdir, workflowId = wfId,
+                   workdir = cfg.workdir, timeout = cfg.timeout,
+                   workflowId = wfId,
                    jobId = jobId, location = JobEngineLocationContext(jgCfg.hostname, jgCfg.hostport),
                    runner = cfg.runner)
 
@@ -65,7 +66,8 @@ package object runtime {
           taskExec = "MesosScioJob",
           runAs = mesosCfg.runas,
           JobContext(name = cfg.name, description = cfg.description,
-                   workdir = cfg.workdir, workflowId = wfId,
+                   workdir = cfg.workdir, timeout = cfg.timeout,
+                   workflowId = wfId,
                    jobId = jobId, location = JobEngineLocationContext(jgCfg.hostname, jgCfg.hostport),
                    runner = cfg.runner), selector(scheduler, httpService)(mesosCfg))
       }
