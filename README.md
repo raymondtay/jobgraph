@@ -102,8 +102,9 @@ for more details.
   monitor and manage the lifecycle of your workflow for you.
 - Workflows cannot be restarted
 - Workflows cannot be scheduled
-- Job parameters cannot be altered after you have created it; you need to
-  create another job.
+- ~~Job parameters cannot be altered after you have created it; you need to
+  create another job~~
+  - Work completed in [HCD-63](https://nugitco.atlassian.net/browse/HCD-63)
 - 
 
 We will be plugging these soon.
