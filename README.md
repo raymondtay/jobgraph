@@ -108,3 +108,6 @@ for more details.
 - 
 
 We will be plugging these soon.
+
+# References
+- See the `install_postgresql.md` on instructions to install postgresql database version 9.6
