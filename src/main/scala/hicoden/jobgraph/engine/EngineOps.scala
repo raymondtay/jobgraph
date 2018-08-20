@@ -305,8 +305,6 @@ trait EngineOps extends Concretizer with DatabaseOps {
   def mergeE(edges: List[LEdge[Job,String]], overrides: List[Job]) : List[LEdge[Job,String]] = {
     val m = overrides.groupBy(_.id)
     edges.map(edge ⇒ m.get(edge.from.id).fold(edge)(job ⇒ edge.copy(from = job.head))).map(edge ⇒ m.get(edge.to.id).fold(edge)(job ⇒ edge.copy(to = job.head)))
-    //val m : Map[Int, List[JobOverrides]] = overrides.overrides.groupBy(_.id)
-    //edges.map(gEdge ⇒ m.get(gEdge.from.config.id).fold(gEdge)(overrde ⇒ gEdge.copy(from = merge(gEdge.from, overrde.head)))).map(gEdge ⇒ m.get(gEdge.to.config.id).fold(gEdge)(overrde ⇒ gEdge.copy(to = merge(gEdge.to, overrde.head))))
   }
 
   // For the overridable fields of each [[Job]], we apply its corresponding

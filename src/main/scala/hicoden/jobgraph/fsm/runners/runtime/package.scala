@@ -71,7 +71,7 @@ package object runtime {
                    jobId = jobId, location = JobEngineLocationContext(jgCfg.hostname, jgCfg.hostport),
                    runner = cfg.runner), selector(scheduler, httpService)(mesosCfg))
       }
- 
+
   }
 
 }

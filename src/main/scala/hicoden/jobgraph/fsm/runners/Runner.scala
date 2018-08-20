@@ -8,7 +8,7 @@ import scala.language.existentials
 import scala.concurrent._
 import com.typesafe.scalalogging.Logger
 
-// 
+//
 // JobGraph Dataflow Runner. See [[DataflowRunnerSpecs]] for the unit tests
 // or check out the sample code via `sbt tut` on the sbt repl.
 //
@@ -42,9 +42,9 @@ class DataflowRunner extends ExecRunner {
       if (cwd.isEmpty) Process(command, None, env.toSeq:_*).run()
       else Process(command, Some(new java.io.File(cwd)), env.toSeq:_*).run()
     }.toEither
-    result.fold(onError(runtimeContext), onSuccess(runtimeContext))  
+    result.fold(onError(runtimeContext), onSuccess(runtimeContext))
   }
- 
+
   // If error occurs, a log is produced and we do not alter the context but
   // return it
   def onError(ctx: runtime.JobContext) = (error: Throwable) ⇒ {
@@ -89,9 +89,9 @@ class MesosDataflowRunner extends MesosExecRunner {
       if (cwd.isEmpty) Process(command, None, env.toSeq:_*).run()
       else Process(command, Some(new java.io.File(cwd)), env.toSeq:_*).run()
     }.toEither
-    result.fold(onError(runtimeContext), onSuccess(runtimeContext))  
+    result.fold(onError(runtimeContext), onSuccess(runtimeContext))
   }
- 
+
   // If error occurs, a log is produced and we do not alter the context but
   // return it
   def onError(ctx: runtime.MesosJobContext) = (error: Throwable) ⇒ {
@@ -106,7 +106,7 @@ class MesosDataflowRunner extends MesosExecRunner {
 
 }
 
-// 
+//
 // JobGraph DataflowMonitor Runner. See [[DataflowMonitorRunnerSpecs]] for the unit tests
 // or check out the sample code via `sbt tut` on the sbt repl.
 //
@@ -133,9 +133,9 @@ class DataflowMonitorRunner extends MonitorRunner {
     val result : Either[Throwable,String] = scala.util.Try{
       Process("sh" :: ctx.locationOfProgram, cwd = None, extraEnv = "JOB_ID" -> ctx.jobId).!!
     }.toEither
-    result.fold(onError(ctx), onSuccess(ctx)(f))  
+    result.fold(onError(ctx), onSuccess(ctx)(f))
   }
- 
+
   // If error occurs, a log is produced and we do not alter the context but
   // return it
   def onError[A](ctx: MonitorContext[A]) = (error: Throwable) ⇒ {
@@ -176,9 +176,9 @@ class DataflowJobTerminationRunner extends TerminationRunner {
     val result : Either[Throwable,List[String]] = scala.util.Try{
       Process("sh" :: ctx.locationOfProgram, cwd = None, extraEnv = "JOB_ID" -> ctx.jobIds.mkString(" ")).lineStream.toList
     }.toEither
-    result.fold(onError(ctx), onSuccess(ctx)(f))  
+    result.fold(onError(ctx), onSuccess(ctx)(f))
   }
- 
+
   // If error occurs, a log is produced and we do not alter the context but
   // return it
   def onError[A](ctx: DataflowTerminationContext) = (error: Throwable) ⇒ {

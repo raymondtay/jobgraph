@@ -11,13 +11,13 @@ case class WorkflowConfig(id : Int, name : String, description : String, jobgrap
   * described in https://nugitco.atlassian.net/wiki/spaces/ND/pages/437846029/Job+Specification
   */
 case class JobOverrides(
-  id            : Int, // indicate to the system which job you want to be overrided when it executes
-  description   : Option[String],
-  workdir       : Option[String],
-  sessionid     : Option[String],
-  timeout       : Option[Int],
-  runnerRunner  : Option[String],
-  runnerCliArgs : Option[List[String]]
+  id                 : Int, // indicate to the system which job you want to be overrided when it executes
+  description        : Option[String],
+  workdir            : Option[String],
+  sessionid          : Option[String],
+  timeout            : Option[Int],
+  runnerRunner       : Option[String],
+  runnerCliArgs      : Option[List[String]]
 )
 
 // This model supports the user to be able to override the defaults (i.e.
