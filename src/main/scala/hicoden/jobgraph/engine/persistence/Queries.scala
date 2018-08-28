@@ -98,6 +98,10 @@ trait DatabaseOps extends FragmentFunctions {
 
   def deleteAllJobTemplates : Update0 = sql"delete from job_template".update
 
+  def deleteAllJobRuntimeRecords : Update0 = sql"delete from job_rt".update
+
+  def deleteAllWorkflowRuntimeRecords : Update0 = sql"delete from workflow_rt".update
+
   def updateWorkflowStatusRT(wfStatus: WorkflowStates.States) : Reader[WorkflowId, Fragment] =
     Reader{ (wfId: WorkflowId) ⇒
       sql"update workflow_rt set status = ${wfStatus} where wf_id = ${wfId};"

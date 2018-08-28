@@ -11,6 +11,27 @@ This is an engine that allows you to do two things:
   you;automatically monitors the job and starts the next dependencies once it
   has completed.
 
+In the architecture you are about to see, it is designed to have the
+flexibility to run Apache Beam jobs either in :
+
+* (a) Same host as `JobGraph` i.e. _local-mode_ (*Note:* Not recommended)
+* (b) Delegate to Google Dataflow infrastructure
+* (c) Delegate to any of the nodes available in the compute cluster
+
+Option (b) is favored over Option (c) when you have a huge job that would be
+executed in Google's infrastructure (for example: you have a sizable monetary
+budget); otherwise you can exercise Option(c) by switching the type of runners.
+
+To enable Option(b), which is the default, you have to do the following:
+- Make sure at least one (i.e. 1) Apache Mesos cluster is alive and configure
+  it in the `application.conf`.
+- `MesosDataflow:java` and `--runner=DataflowRunner` for Java jobs
+- `MesosDataflow:python` and `--runner DataflowRunner` for Python jobs
+
+To enable Option(c), which is not the default, you have to do the following:
+- `Dataflow:java` and `--runner=DirectRunner` for Java jobs
+- `Dataflow:python` and `--runner DirectRunner` for Python jobs
+
 # Architecture
 ## Multi-tenant shared-compute Architecture
 What you see here is, potentially but fictitiously, 2 customers having their

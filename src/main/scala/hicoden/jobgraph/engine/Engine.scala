@@ -102,7 +102,9 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
 
     initDb.fold{ for { (l, r) ← loadAllConfigTemplatesFromDatabase :: Nil} {jdt = l; wfdt = r} }{ _ ⇒
       import Transactors.y._
-      (deleteAllWorkflowTemplates.run.attempt        *>
+      (deleteAllJobRuntimeRecords.run.attempt        *>
+       deleteAllWorkflowRuntimeRecords.run.attempt   *>
+       deleteAllWorkflowTemplates.run.attempt        *>
        deleteAllJobTemplates.run.attempt             *>
        fillDatabaseWorkflowConfigs(wfdt).run.attempt *>
        fillDatabaseJobConfigs(jdt).run.attempt        ).quick.unsafeRunSync
