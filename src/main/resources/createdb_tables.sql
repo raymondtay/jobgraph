@@ -73,10 +73,13 @@ CREATE TYPE WorkflowStates as ENUM(
 -- see [[JobStates]] for the in-memory model mapping
 CREATE TYPE JobStates as ENUM(
   'inactive',
-  'start',
   'active',
+  'start',
+  'updated',
   'forced_termination',
-  'finished'
+  'finished',
+  'failed',
+  'unknown'
 );
 
 CREATE TYPE JobConfigRT as (

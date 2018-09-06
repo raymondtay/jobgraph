@@ -513,11 +513,6 @@ object Engine extends App with JobCallbacks with WorkflowWebServices with JobWeb
     System.exit(-1)
   }
 
-  // start a job graph running
-  // TODO: remove this in the next iteration
-  // implicit val timeout = akka.util.Timeout(5 seconds)
-  // val workflowId : WorkflowId = java.util.UUID.fromString(Await.result((engine ? StartWorkflow(0)).mapTo[String], timeout.duration))
-
   // Bind the engine to serve ReST
   val bindingFuture = Http().bindAndHandle(JobCallbackRoutes ~ WorkflowWebServicesRoutes ~ JobWebServicesRoutes, "0.0.0.0")
   println(s"Server online at http://0.0.0.0:9000/\nPress RETURN to stop...")
@@ -527,9 +522,6 @@ object Engine extends App with JobCallbacks with WorkflowWebServices with JobWeb
     .onComplete(_ ⇒ actorSystem.terminate()) // and shutdown when done
 
   Thread.sleep(waitTimeForAsyncProcessing)
-
-  // stops the workflow aka "forced termination" of the jobgraph
-  //engine ! StopWorkflow(workflowId)
 
   Thread.sleep(waitTimeForCleanup)
 

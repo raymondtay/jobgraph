@@ -2,6 +2,7 @@ package hicoden.jobgraph.engine
 
 import java.util.UUID
 
+import hicoden.jobgraph.JobStates
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.{Route, RequestContext, HttpApp}
@@ -79,14 +80,32 @@ trait JobCallbacks {
           case ((wfId: UUID, jobId: UUID)) ⇒
             entity.fold(complete("Request does not contain valid JSON")){
               data ⇒
-                extractGoogleDataflowId(data).fold(complete("Either we did not see the key 'google_dataflow_id' or its in a format other than 'string'.")){
-                  googleDataflowId ⇒
+                Either.fromOption(extractGoogleDataflowId(data), extractNonGoogleDataflowJobStatus(data)).bimap(
+                  jobStatus ⇒ {
+                    jobStatus.fold(complete(s"Either we did not see the key 'google_dataflow_id' nor 'job_status' or its value is other than 'string' or an invalid job status.")){ reportedStatus ⇒
+                    engine ! UpdateWorkflow(wfId, jobId, reportedStatus)
+                    complete(s"OK. Engine has updated the job:[$jobId]'s status to: $reportedStatus")
+                  }},
+                  googleDataflowId ⇒ {
                     engine ! SuperviseJob(wfId, jobId, googleDataflowId)
                     complete(s"OK. Engine will supervise Dataflow jobId: $jobId")
-                }
+                  }
+               ).merge
             }
         })
 
+  // Look for the key: "job_status" in the JSON payload and attempt to map the
+  // response back; take note that if the payload contains any other value than
+  // 'FAILED' or 'FINISHED' then 'UNKNOWN' will be registered.
+  private[engine]
+  def extractNonGoogleDataflowJobStatus : Reader[io.circe.Json, Option[JobStates.States]] = Reader{ (json: io.circe.Json) ⇒
+    import io.circe.optics.JsonPath._
+    import hicoden.jobgraph.engine.runtime.ApacheBeamJobStatusFunctions
+    val jobStatus = root.job_status.string
+    jobStatus.getOption(json).fold(none[JobStates.States])(purportedStatus ⇒ ApacheBeamJobStatusFunctions.lookup(purportedStatus))
+  }
+
+  // Look for the key: "google_dataflow_id" in the JSON payload.
   private[engine]
   def extractGoogleDataflowId: Reader[io.circe.Json, Option[String]] = Reader{ (json: io.circe.Json) ⇒
     import io.circe.optics.JsonPath._

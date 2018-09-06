@@ -157,6 +157,40 @@ class JobCallbacksSpecs2 extends Specification with Specs2RouteTest with JobCall
       }
     }
 
+    "return a HTTP-200 code when workflow and job ids are UUIDs and engine is available and the expected json payload does contain the correct key: 'job_status' and valid job status" in {
+      val wfId = java.util.UUID.randomUUID
+      val jobId = java.util.UUID.randomUUID
+      import io.circe._
+      val data =
+        """ {"job_status" : "CANCELLED" } """ ::
+        """ {"job_status" : "DONE" } """ ::
+        """ {"job_status" : "FAILED" } """ ::
+        """ {"job_status" : "RUNNING" } """ ::
+        """ {"job_status" : "STOPPED" } """ ::
+        """ {"job_status" : "UNKNOWN" } """ ::
+        """ {"job_status" : "UPDATED" } """ :: Nil
+
+        data.map(
+          datum ⇒
+            Post(s"/flows/$wfId/job/$jobId", HttpEntity(`application/json`, datum)) ~> JobCallbackRoutes ~> check {
+              status shouldEqual OK
+              responseAs[String] must startWith(s"OK. Engine has updated the job")
+            }
+          )
+    }
+
+    "return a HTTP-200 code when workflow and job ids are UUIDs and engine is available but the expected json payload does contain the correct value for key: 'job_status'" in {
+      val wfId = java.util.UUID.randomUUID
+      val jobId = java.util.UUID.randomUUID
+      import io.circe._
+      val data = """ {"job_status" : "i dont care what value is here" } """ // expected value type should be one of the {CANCELLED,DONE,FAILED,FINISHED,STOPPED,RUNNING,UNKNOWN,UPDATED}
+
+      Post(s"/flows/$wfId/job/$jobId", HttpEntity(`application/json`, data)) ~> JobCallbackRoutes ~> check {
+        status shouldEqual OK
+        responseAs[String] must startWith(s"Either we did not see the key")
+      }
+    }
+
   }
 
 }

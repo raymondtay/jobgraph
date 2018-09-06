@@ -24,10 +24,16 @@ import java.util.UUID
   * is given a timestamp to mark the creation time.
   *
   */
-
 object JobStates extends Enumeration {
   type States = Value
-  val inactive, start, active, forced_termination, finished = Value
+  val inactive,           /* Jobs start in the inactive state */
+      start,              /* Jobs are bootstrapped but not directly executing would land in this state */
+      active,             /* Jobs once started would land in the active state */
+      updated,            /* Jobs were updated, jobgraph ignores this state */
+      forced_termination, /* Jobs cancelled by hand or automatic means would land in this state */
+      finished,           /* Jobs might terminate normally in the finished state */
+      failed,             /* Jobs might terminate abnormally in the failed state */
+      unknown = Value     /* Jobs might end up in the unknown state */
 }
 
 // All workflows start at the 'not_started' state, then it would progress to
@@ -37,7 +43,10 @@ object JobStates extends Enumeration {
 // between OK/Failed runs)
 object WorkflowStates extends Enumeration {
   type States = Value
-  val not_started, started, finished, forced_termination = Value
+  val not_started, /* workflows, when first bootstrapped would land in this state */
+      started,     /* workflows, when started but hasn't completed would land in this state */
+      finished,    /* workflows, when run to full completion or abnormal termination would land in this state */
+      forced_termination = Value /* Workflows cancelled by hand or automatic means would land in this state */
 }
 
 

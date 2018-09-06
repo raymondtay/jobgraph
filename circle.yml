@@ -77,8 +77,11 @@ jobs:
              'inactive',
              'start',
              'active',
+             'updated',
              'forced_termination',
-             'finished'
+             'finished',
+             'unknown',
+             'failed'
            );"
     - run: |
         psql \
