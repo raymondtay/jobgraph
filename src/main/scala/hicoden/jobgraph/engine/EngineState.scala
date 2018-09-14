@@ -27,7 +27,7 @@ case class JobDescriptors(map: JobDescriptorTable)
 case class WorkflowDescriptors(map : WorkflowDescriptorTable)
 
 // Functions for managing the state of the queues
-trait EngineQueueStateOps {
+trait EngineStateOps2 {
 
   import cats._, data._, implicits._
 
@@ -86,7 +86,14 @@ trait EngineQueueStateOps {
       true
     }
 
-  def addToActive2(workflowId: WorkflowId) : Kleisli[State[ActiveWorkflows, ?], Set[(ActorRef,Job)], Boolean] =
+  /**
+    * State function to add a mapping of (Workflow Id -> Workers) to the State
+    * object
+    * @param workflowId
+    * @param state object
+    * @return State object i.e. ActiveWorkflows -> (ActiveWorkflows, Boolean)
+    */
+  def addToActive(workflowId: WorkflowId) : Kleisli[State[ActiveWorkflows, ?], Set[(ActorRef,Job)], Boolean] =
     Kleisli{ (workers: Set[(ActorRef, Job)]) ⇒
       for {
         s  ← State.get[ActiveWorkflows]
@@ -104,7 +111,7 @@ trait EngineQueueStateOps {
     * @param workersToWorkflow
     * @return State object
     */
-  def addToLookup2(wfId: WorkflowId) : Reader[Set[(ActorRef,Job)], State[WorkersToWorkflow,_]] =
+  def addToLookup(wfId: WorkflowId) : Reader[Set[(ActorRef,Job)], State[WorkersToWorkflow,_]] =
     Reader{ (actorRefs: Set[(ActorRef,Job)]) ⇒
       for {
         s ← State.get[WorkersToWorkflow]
@@ -313,6 +320,7 @@ trait EngineStateOps {
     * @param a workflow ADT of type [[WFA]]
     * @return the workflow ADT of type [[WFA]]
     */
+  @deprecated("To be removed","1.0")
   def getCurrentActiveWorkflows : State[WFA, WFA] = for { s ← State.get[WFA] } yield s
 
   /**
@@ -322,6 +330,7 @@ trait EngineStateOps {
     * @param workers the set of references to actors
     * @return the workflow ADT of type [[WFA]]
     */
+  @deprecated("To be removed","1.0")
   def addToActive(workflowId: WorkflowId) : Kleisli[State[WFA, ?], Set[(ActorRef,Job)], WFA] =
     Kleisli{ (workers: Set[(ActorRef, Job)]) ⇒
       for {
@@ -337,6 +346,7 @@ trait EngineStateOps {
     * @param wfId workflow id
     * @return the workflow ADT of type [[WFA]]
     */
+  @deprecated("To be removed","1.0")
   def removeFromActive : Kleisli[State[WFA, ?], WorkflowId, Boolean] =
     Kleisli{ (workflowId: WorkflowId) ⇒
       for {
@@ -353,6 +363,7 @@ trait EngineStateOps {
     * @param workers set of actor references to be replaced
     * @return the workflow ADT of type [[WFA]]
     */
+  @deprecated("To be removed","1.0")
   def updateActive(workflowId: WorkflowId) : Kleisli[State[WFA, ?], Set[(ActorRef,Job)], WFA] =
     Kleisli{ (workers: Set[(ActorRef, Job)]) ⇒
       for {

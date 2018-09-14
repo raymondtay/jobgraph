@@ -65,7 +65,7 @@ case object JobListing
 case class WorkflowRuntimeReport(workflowId: WorkflowId)
 
 
-class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflowNamespaces: List[String]) extends Actor with ActorLogging with EngineStateOps with EngineQueueStateOps with EngineOps {
+class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflowNamespaces: List[String]) extends Actor with ActorLogging with EngineStateOps2 with EngineOps {
   import cats._, data._, implicits._
   import cats.effect.IO
   import cats.free._
@@ -163,8 +163,8 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
             }) >>= ((workers: Set[(ActorRef,Job)]) ⇒ {
               jobGraph.status = WorkflowStates.started
               updateWorkflowStatusToDatabase(jobGraph.status)(jobGraph.id).run.transact(Transactors.xa).unsafeRunSync
-              addToLookup2(jobGraph.id)(workers).runS(WORKERS_TO_WF_LOOKUP).value
-              addToActive2(jobGraph.id)(workers).runS(ACTIVE_WORKFLOWS).value
+              addToLookup(jobGraph.id)(workers).runS(WORKERS_TO_WF_LOOKUP).value
+              addToActive(jobGraph.id)(workers).runS(ACTIVE_WORKFLOWS).value
               logger.info("[Engine] Started a job graph")
             })
 
@@ -379,10 +379,10 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
             activateWorkers(wfId)(workers)
             Monad[Id].pure(workers)
           }) >>= ((workers: Set[(ActorRef, Job)]) ⇒ {
-            addToActive2(wfId)(workers).runS(ACTIVE_WORKFLOWS).value
+            addToActive(wfId)(workers).runS(ACTIVE_WORKFLOWS).value
             Monad[Id].pure(workers)
           }) >>= ((workers: Set[(ActorRef, Job)]) ⇒ {
-            addToLookup2(wfId)(workers).runS(WORKERS_TO_WF_LOOKUP).value
+            addToLookup(wfId)(workers).runS(WORKERS_TO_WF_LOOKUP).value
             Monad[Id].pure(workers)
           })
           (ACTIVE_WORKFLOWS, WORKERS_TO_WF_LOOKUP)

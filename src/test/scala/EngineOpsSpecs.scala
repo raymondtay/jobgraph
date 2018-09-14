@@ -10,6 +10,7 @@ import hicoden.jobgraph.configuration.step.JobDescriptorTable
 import pureconfig._
 import pureconfig.error._
 import org.specs2._
+import org.specs2.specification.BeforeEach
 import org.scalacheck._
 import com.typesafe.config._
 import Arbitrary.{arbString ⇒ _, arbInt ⇒ _ , _}
@@ -43,11 +44,16 @@ object EngineOpsData {
 }
 
 class EngineOpsSpecs extends mutable.Specification with
-                               ScalaCheck with
-                               EngineOps {
+                             ScalaCheck with
+                             BeforeEach with
+                             EngineOps {
 
   sequential // all specifications are run sequentially
 
+  override def before {
+    JDT  = JobDescriptors(scala.collection.immutable.HashMap.empty[Int, JobConfig])
+    WFDT = WorkflowDescriptors(scala.collection.immutable.HashMap.empty[Int, WorkflowConfig])
+  }
   val minimumNumberOfTests = 20
   import cats._, data._, implicits._, Validated._
 
@@ -65,15 +71,15 @@ class EngineOpsSpecs extends mutable.Specification with
     val loadedWfConfigs = if (loadFalse) t.loadDefault("nonexistent" :: Nil) else t.loadDefault("workflows" ::"workflows2"::"workflows3"::Nil)
     var wfdt : WorkflowDescriptorTable = scala.collection.immutable.HashMap.empty[Int, WorkflowConfig]
     wfdt = t.hydrateWorkflowConfigs(loadedWfConfigs.toList.flatten).runS(wfdt).value
-    (jdt,wfdt)
+    (JDT.copy(map = jdt),WFDT.copy(map = wfdt))
   }
 
   {
     "Extracting non-existent workflows from the system is pure folly." >> prop{ (workflowIndex: Int) ⇒
       val (jdt, wfdt) = loadConfigs(loadFalse = true) // make this really explicit
       extractWorkflowConfigBy(workflowIndex, None)(jdt, wfdt) must beNone 
-      jdt.size must be_==(0)
-      wfdt.size must be_==(0)
+      jdt.map.size must be_==(0)
+      wfdt.map.size must be_==(0)
     }.set(minTestsOk = minimumNumberOfTests, workers = 1)
   }
 
