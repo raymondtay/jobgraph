@@ -28,12 +28,30 @@ import java.util.UUID
 // (a) Semantically speaking, once a workflow starts then it should continue
 //     its natural course of execution w/o no intervention from the Engine; the
 //     only thing left to do is to start it via [[StartWorkflow]] and stop is via
-//     [[StopWorkflow]]
+//     [[StopWorkflow]]; any updates received for the workflow is via
+//     [[UpdateWorkflow]]. You have the option of overriding default options of
+//     any job and workflow when you start it via
+//     [[ValidateWorkflowJobOverrides]].
 //
-// (b) When any step of the workflow completes, the job would signal (via
-//     [[UpdateWorkflow]]) the engine Engine would update its internal state
+// (b) When any step of the workflow completes normally or abnormally, the job would
+//     signal (via [[UpdateWorkflow]]) the engine Engine would update its internal state
 //     and decide what to do next.
 //
+// (c) The engine can respond a query of the workflow which returns a JSON
+//     response illustrating the state of the entire workflow via
+//     [[WorkflowRuntimeReport]]
+//
+// (d) The engine can respond to queries of all jobs and workflows via
+//     [[JobListing]] and [[WorkflowListing]] respectively.
+//
+// (e) Apache beam jobs (running using DataflowRunner or DirectRunner) would
+//     need to send a ACK or update back to the Engine so that it knows how to
+//     proceed automatically.
+//
+// (f) Engine allows the online submission of new jobs and new workflows (which
+//     is stored in the database upon successful validation) via
+//     [[ValidateJobSubmission]] and [[ValidateWorkflowSubmission]] and they can
+//     subsequently be triggered via [[StartWorkflow]]
 
 case class StartWorkflow(jobOverrides: Option[io.circe.Json], workflowId: Int)
 case class StopWorkflow(workflowId: WorkflowId)
@@ -47,30 +65,13 @@ case object JobListing
 case class WorkflowRuntimeReport(workflowId: WorkflowId)
 
 
-//
-// Engine should perform the following:
-// (a) Start the Workflow (which is essentially updating its in-memory graph structure and starting a FSM to execute the jobs)
-// (b) Receive signals from the FSM actors about the execution status
-// (c) Update its internal structure and decides whether to push the execution to the next step(s) because there will be wait-times at certain control
-//     points - as decided by the digraph (take note that it can be a multi-graph)
-//
-class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflowNamespaces: List[String]) extends Actor with ActorLogging with EngineStateOps with EngineOps {
+class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflowNamespaces: List[String]) extends Actor with ActorLogging with EngineStateOps with EngineQueueStateOps with EngineOps {
   import cats._, data._, implicits._
   import cats.effect.IO
   import cats.free._
   import WorkflowOps._
   import doobie._, doobie.implicits._
 
-  // TODO:
-  // (a) ADTs should be accessible from any node in the cluster that's right we
-  //     are talking about peer-peer actor clusters. Coming up soon !
-  //
-  private[this] var activeWorkflows   = collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]]
-  private[this] var activeDataflows   = collection.mutable.Map.empty[GoogleDataflowId, WorkflowId]
-  private[this] var workersToWfLookup = collection.mutable.Map.empty[ActorPath, WorkflowId]
-  private[this] var failedWorkflows   = collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]]
-  private[this] var jdt : JobDescriptorTable = collection.immutable.HashMap.empty[Int, JobConfig]
-  private[this] var wfdt : WorkflowDescriptorTable  = collection.immutable.HashMap.empty[Int, WorkflowConfig]
   private[this]
   var prohibiters = {
     val routees = Vector.fill(8) {
@@ -95,26 +96,39 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * the value 'no' then it is meant to lift the configuration from the
     * database.
     */
-  override def preStart() = { if (!jobNamespaces.isEmpty && !workflowNamespaces.isEmpty) init() }
+  override def preStart() = {
+    ACTIVE_WORKFLOWS     = ActiveWorkflows(collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]])
+    FAILED_WORKFLOWS     = FailedWorkflows(collection.mutable.Map.empty[WorkflowId, Map[ActorRef, Job]])
+    WORKERS_TO_WF_LOOKUP = WorkersToWorkflow(collection.mutable.Map.empty[ActorPath, WorkflowId])
+    ACTIVE_DATAFLOW_JOBS = ActiveGoogleDataflow(collection.mutable.Map.empty[GoogleDataflowId, WorkflowId])
+    JDT                  = JobDescriptors(collection.immutable.HashMap.empty[Int, JobConfig])
+    WFDT                 = WorkflowDescriptors(collection.immutable.HashMap.empty[Int, WorkflowConfig])
+    if (!jobNamespaces.isEmpty && !workflowNamespaces.isEmpty) init()
+  }
 
   def init() = {
-    for { (l,r) <- prepareDescriptorTables(jobNamespaces, workflowNamespaces) :: Nil } { jdt = l; wfdt = r }
+    updateJDTNWFDTTableState(prepareDescriptorTables(jobNamespaces, workflowNamespaces).bimap(l ⇒ JDT.copy(map = l), r ⇒ WFDT.copy(map = r)))
 
-    initDb.fold{ for { (l, r) ← loadAllConfigTemplatesFromDatabase :: Nil} {jdt = l; wfdt = r} }{ _ ⇒
+    initDb.fold(overrideJobNWorkflowDescriptorsFromDatabase){ _ ⇒
       import Transactors.y._
-      (deleteAllJobRuntimeRecords.run.attempt        *>
-       deleteAllWorkflowRuntimeRecords.run.attempt   *>
-       deleteAllWorkflowTemplates.run.attempt        *>
-       deleteAllJobTemplates.run.attempt             *>
-       fillDatabaseWorkflowConfigs(wfdt).run.attempt *>
-       fillDatabaseJobConfigs(jdt).run.attempt        ).quick.unsafeRunSync
+      (deleteAllJobRuntimeRecords.run.attempt                   *>
+       deleteAllWorkflowRuntimeRecords.run.attempt              *>
+       deleteAllWorkflowTemplates.run.attempt                   *>
+       deleteAllJobTemplates.run.attempt                        *>
+       fillDatabaseWorkflowConfigs.runA(WFDT).value.run.attempt *>
+       fillDatabaseJobConfigs.runA(JDT).value.run.attempt        ).quick.unsafeRunSync
     }
 
     mesosConfig    = loadMesosConfig.fold(whenUnableToLoadConfig("Mesos")(_), _.some)
     jobgraphConfig = loadEngineConfig.fold(whenUnableToLoadConfig("Engine")(_), _.some)
   }
 
-  private def whenUnableToLoadConfig(namespace: String) = Reader{ (errors: NonEmptyList[HOCONValidation]) ⇒
+  private def overrideJobNWorkflowDescriptorsFromDatabase {
+    updateJDTNWFDTTableState(loadAllConfigTemplatesFromDatabase.bimap(l ⇒ JDT.copy(map = l), r ⇒ WFDT.copy(map = r)))
+  }
+
+  private
+  def whenUnableToLoadConfig(namespace: String) = Reader{ (errors: NonEmptyList[HOCONValidation]) ⇒
     logger.warn(s"Unable to load $namespace Config; not going to use Apache Mesos: details $errors")
     None
   }
@@ -129,36 +143,32 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * (b) "Database operation failed, unable to start workflow"
     *
     * @param jobOverrides
-    * @param wfdt
-    * @param jdt
     * @param workflowId
     * @return the UUID workflow id or (a) / (b) or (c)
     */
-  def attemptStartWorkflow(jobOverrides : Option[JobConfigOverrides], wfdt: WorkflowDescriptorTable, jdt: JobDescriptorTable) = Reader{ (workflowId: Int) ⇒
-    extractWorkflowConfigBy(workflowId, jobOverrides)(jdt, wfdt).fold{
+  def attemptStartWorkflow(jobOverrides : Option[JobConfigOverrides]) = Reader{ (workflowId: Int) ⇒
+    extractWorkflowConfigBy(workflowId, jobOverrides)(JDT, WFDT).fold{
       logger.error(s"[Engine][StartWorkflow] The workflow-id giving: $workflowId does not exist in the system")
       "No such id"
       }{
         (nodeEdges) ⇒
-          val jobGraph = createWf(wfdt.get(workflowId), nodeEdges._1)(nodeEdges._2)
+          val jobGraph = createWf(WFDT.map.get(workflowId), nodeEdges._1)(nodeEdges._2)
           insertNewWorkflowIntoDatabase(jobGraph).fold(s"Database operation failed, unable to start workflow: [$workflowId]"){ totalRowsInserted ⇒
             logger.debug("[Engine] Received a job graph id:{}", jobGraph.id)
-            val workers = startWorkflow(jobGraph.id).fold(Set.empty[(akka.actor.ActorRef, Job)])(createWorkers(_))
-            if (workers.isEmpty) {
-              logger.error("""
-                [Engine] We just started a workflow {} where there are no start nodes.
-                [Engine] Workflow is {}
-                """, jobGraph.id, jobGraph)
-              jobGraph.id.toString
-            } else {
+
+            startWorkflow(jobGraph.id).fold(Monad[Id].pure(Set.empty[(akka.actor.ActorRef, Job)]))(Monad[Id].pure(createWorkers(_))) >>= ((workers: Set[(ActorRef,Job)]) ⇒ {
               activateWorkers(jobGraph.id)(workers)
+              logger.info(s"[Engine] Attempted to activate workers for workflow: [${jobGraph.id}]")
+              Monad[Id].pure(workers)
+            }) >>= ((workers: Set[(ActorRef,Job)]) ⇒ {
               jobGraph.status = WorkflowStates.started
               updateWorkflowStatusToDatabase(jobGraph.status)(jobGraph.id).run.transact(Transactors.xa).unsafeRunSync
-              workersToWfLookup = addToLookup(jobGraph.id)(workers).runS(workersToWfLookup).value
-              activeWorkflows   = addToActive(jobGraph.id)(workers).runS(activeWorkflows).value
+              addToLookup2(jobGraph.id)(workers).runS(WORKERS_TO_WF_LOOKUP).value
+              addToActive2(jobGraph.id)(workers).runS(ACTIVE_WORKFLOWS).value
               logger.info("[Engine] Started a job graph")
-              jobGraph.id.toString
-            }
+            })
+
+            jobGraph.id.toString
         }
     }
   }
@@ -171,12 +181,12 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
       import io.circe.generic.auto._, io.circe.syntax._
 
       if (payload.isEmpty) {
-        sender() ! attemptStartWorkflow(None, wfdt, jdt)(workflowId)
+        sender() ! attemptStartWorkflow(None)(workflowId)
       } else
         payload.get.as[JobConfigOverrides].bimap(decodingFailure ⇒ None, identity).toOption.fold{
           logger.error(s"[Engine] Starting of workflow index: [$workflowId] has failed due to invalid job overrides - this shouldn't happen.")
           sender() ! s"Unable to start workflow: [$workflowId] because of json decoding failure"
-        }{ jobOverrides ⇒ sender() ! attemptStartWorkflow(jobOverrides.some, wfdt, jdt)(workflowId) }
+        }{ jobOverrides ⇒ sender() ! attemptStartWorkflow(jobOverrides.some)(workflowId) }
 
     // Updating the workflow effectively means we do a few things:
     // (a) Update the job's state for the workflow and if something happens
@@ -188,29 +198,25 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
       logger.info(s"[Engine][UpdateWorkflow] Going to update wf:$wfId, job:$jobId for signal: $signal")
       updateWorkflowDbNInmemory(wfId)(jobId)(signal).bimap(
         (error: Exception) ⇒ {
-          logFailure.run(error) >>
-          dropWorkflowFromActive(activeWorkflows, failedWorkflows)(wfId).bimap(
-            (errorMessage: String) ⇒ logger.error(s"[Engine][UpdateWorkflow] Error in updating workflow with message: $errorMessage ."),
-            (pair: (Map[WorkflowId, Map[ActorRef, Job]], Map[WorkflowId, Map[ActorRef, Job]])) ⇒ {
-              activeWorkflows = pair._1
-              failedWorkflows = pair._2
-            }
-          )
+          logFailure.run(error)
+          if (dropWorkflowFromActiveToFailedBy(wfId))
+            logger.info(s"[Engine][UpdateWorkflow] Dropped workflow: [$wfId] from 'active' to 'failed'")
+          else
+            logger.info(s"[Engine][UpdateWorkflow] Unable to drop workflow: [$wfId] from 'active' to 'failed'")
         },
         (status: Option[Boolean]) ⇒ {
           for {
-            jobs ← EitherT(discoverNext(wfId)(jobId))
+            jobs        ← EitherT(discoverNext(wfId)(jobId))
+            toTerminate ← EitherT(isJobToEuthanised(signal))
+            _           ← EitherT(deactivateJobWorkerFromActive(wfId, toTerminate)(jobId))
           } yield {
             if(!jobs.isEmpty) {
               logger.info(s"[Engine][UpdateWorkflow] Going to instantiate workers for this batch : $jobs.")
-              startJobs(wfId)(activeWorkflows, workersToWfLookup)(jobs) match {
-                case Left((a, b)) ⇒
-                  logger.error(s"[Engine][UpdateWorkflow] Error in starting new workers for jobs : $jobs.")
-                  activeWorkflows = a; workersToWfLookup = b
-                case Right((a, b)) ⇒
-                  logger.info(s"[Engine][UpdateWorkflow] Successfully started new workers for jobs : $jobs.")
-                  activeWorkflows = a; workersToWfLookup = b
-              }
+
+              startJobs(wfId)(jobs) *>
+              logger.info(s"[Engine][UpdateWorkflow] Successfully started new workers for jobs : $jobs.") *>
+              updateActiveNLookupTableState(ACTIVE_WORKFLOWS, WORKERS_TO_WF_LOOKUP)
+
             } else {
               if (isWorkflowCompleted(wfId))
                 updateWorkflowStatusToDatabase(WorkflowStates.finished)(wfId).run.transact(Transactors.xa).unsafeRunSync
@@ -228,53 +234,49 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     //
     case SuperviseJob(wfId, jobId, googleDataflowId) ⇒
       logger.info(s"[Engine][SuperviseJob] Received $wfId $jobId $googleDataflowId")
-      activeWorkflows.contains(wfId) match {
-        case true  ⇒
-          lookupActive(wfId)(jobId).runA(activeWorkflows).value.fold(logger.warn(s"Did not locate the job: $jobId")){
-            (p: (ActorRef, Job)) ⇒
-              p._1 ! MonitorRun(wfId, jobId, self, googleDataflowId)
-              activeDataflows = bindDataflowToWorkflow(wfId)(googleDataflowId).runS(activeDataflows).value
-              logger.info(s"[Engine][SuperviseJob] Engine will start supervising Google dataflow job: $googleDataflowId")
-          }
-        case false ⇒ logger.error(s"Did not see either workflow:$wfId , job:$jobId")
-      }
-
+      Either.cond(
+        isWorkflowInActiveWorkflows(wfId).runA(ACTIVE_WORKFLOWS).value,
+        lookupWorkerFromActive(wfId)(jobId).runA(ACTIVE_WORKFLOWS).value.fold(logger.warn(s"[Engine][SuperviseJob] Did not locate the job: $jobId")){
+          (p: (ActorRef, Job)) ⇒
+            p._1 ! MonitorRun(wfId, jobId, self, googleDataflowId)
+            bindDataflowToWorkflow(wfId)(googleDataflowId).runA(ACTIVE_DATAFLOW_JOBS).value
+            logger.info(s"[Engine][SuperviseJob] Engine will start supervising Google dataflow job: $googleDataflowId")
+        },
+        logger.error(s"[Engine][SuperviseJob] Did not see either workflow:$wfId , job:$jobId")
+      )
 
     // De-activation means that we update the state (both in-memory and
     // database) of the workflow to 'forced_termination' and the workers
     // will be shutdown.
     case StopWorkflow(wfId) ⇒
-      Either.cond(activeWorkflows.contains(wfId),
+      Either.cond(isWorkflowInActiveWorkflows(wfId).runA(ACTIVE_WORKFLOWS).value,
       {
         import doobie.postgres._
         val rollbackXa = doobie.util.transactor.Transactor.oops.set(Transactors.xa, HC.rollback)
 
         for {
           ns   ← EitherT(stopWorkflow(wfId))
-          wfs  ← EitherT(deactivateWorkers(wfId)(activeWorkflows))
-          dfs  ← EitherT(cancelGoogleDataflowJobs(wfId)(activeDataflows))
+          wfs  ← EitherT(deactivateWorkflowWorkers(wfId))
+          dfs  ← EitherT(cancelGoogleDataflowJobs(wfId))
         } yield {
           (updateWorkflowStatusToDatabase(WorkflowStates.forced_termination)(wfId).run.attempt *> 
-           updateJobStatusToDatabase(JobStates.forced_termination)(ns).run.attempt *>
-           {activeWorkflows = wfs}.pure[ConnectionIO] *>
-           {activeDataflows = dfs}.pure[ConnectionIO]
+           updateJobStatusToDatabase(JobStates.forced_termination)(ns).run.attempt
           ).transact(rollbackXa).unsafeRunSync
           logger.info("[Engine][StopWorkflow] {} nodes were updated for workflow id:{} and should be stopped.", ns.size, wfId)
         }
-
       },
         logger.error("[Engine][StopWorkflow] Attempting to stop a workflow id:{} that does not exist!", wfId)
       )
 
     case ValidateWorkflowSubmission(cfg) ⇒
-      validateWorkflowSubmission(jdt, wfdt)(cfg).fold{
+      validateWorkflowSubmission(JDT, WFDT)(cfg).fold{
         logger.error(s"[Engine][Internal] Unable to validate the workflow submission : ${cfg}")
         sender() ! none
         }{
         (workflowConfig: WorkflowConfig) ⇒
           import doobie.postgres._
           import Transactors.y._
-          val current = wfdt.size
+          val current = WFDT.map.size
 
           addNewWorkflowToDatabase(workflowConfig).run.attemptSomeSqlState {
             case sqlstate.class23.UNIQUE_VIOLATION ⇒
@@ -282,8 +284,8 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
               sender() ! None
           }.map(r ⇒
             if (r.isRight) {
-              wfdt = addNewWorkflow(workflowConfig).runS(wfdt).value
-              val newSize = wfdt.size
+              addNewWorkflowToWFDT(workflowConfig).runS(WFDT).value
+              val newSize = WFDT.map.size
               if ((newSize - current) == 0)
                 logger.info(s"[Engine] workflow has been added to repository: $current -> $newSize")
               else logger.info(s"[Engine] workflow has not been added to repository.")
@@ -297,14 +299,14 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
         }
 
     case ValidateJobSubmission(cfg) ⇒
-      validateJobSubmission(jdt)(cfg).fold{
+      validateJobSubmission(JDT)(cfg).fold{
         logger.error(s"[Engine][Internal] Unable to validate the job submission: ${cfg}")
         sender() ! none
         }{
           (jobCfg: JobConfig) ⇒
             import doobie.postgres._
             import Transactors.y._
-            val current = jdt.size
+            val current = JDT.map.size
 
             addNewJobToDatabase(jobCfg).run.attemptSomeSqlState{
               case sqlstate.class23.UNIQUE_VIOLATION ⇒
@@ -312,8 +314,8 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
                 sender() ! None
             }.map(r ⇒
               if (r.isRight) {
-                jdt = addNewJob(jobCfg).runS(jdt).value
-                val newSize = jdt.size
+                addNewJob(jobCfg).runS(JDT).value
+                val newSize = JDT.map.size
                 if ((newSize - current) == 0)
                   logger.info(s"[Engine] job has been added to repository: $current -> $newSize")
                 else logger.info(s"[Engine] job has not been added to repository")
@@ -328,21 +330,35 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
 
     case WorkflowRuntimeReport(workflowId) ⇒ sender() ! getWorkflowStatus(workflowId)
 
-    case WorkflowListing ⇒ sender() ! getAllWorkflows.runA(wfdt).value
+    case WorkflowListing ⇒ sender() ! getAllWorkflows.runA(WFDT).value
 
-    case JobListing ⇒ sender() ! getAllJobs.runA(jdt).value
+    case JobListing ⇒ sender() ! getAllJobs.runA(JDT).value
 
     case ValidateWorkflowJobOverrides(payload) ⇒
       import io.circe.generic.auto._, io.circe.syntax._
-      val validationResult =
-        payload.as[JobConfigOverrides].bimap(decodingFailure ⇒ false, data ⇒ validateJobOverrides(jdt)(data).fold(false)(_ ⇒ true)).toOption
+      val validationResult = payload.as[JobConfigOverrides].bimap(decodingFailure ⇒ false, data ⇒ validateJobOverrides(data).fold(false)(_ ⇒ true)).toOption
       sender() ! validationResult
 
     case Terminated(child) ⇒
-      val (xs, result) = removeFromLookup(child).run(workersToWfLookup).value
-      workersToWfLookup = xs
-      val workflowId : WorkflowId = result._1
-      logger.debug("[Engine][Internal] The job: {} has terminated for workflow: {}.", child, workflowId)
+      val wfId = removeFromLookup(child).runA(WORKERS_TO_WF_LOOKUP).value
+      logger.debug("[Engine][Internal] The job: {} has terminated for workflow: {}.", child, wfId)
+  }
+
+  /**
+    * Determine if the job is eligible for termination by interpreting the
+    * states.
+    * @param signal JobStates
+    * @return Left(<some message indicating no>) or Right(a tautology
+    * indicating yes)
+    */
+  def isJobToEuthanised = Reader { (signal: JobStates.States) ⇒
+    Either.cond(Set(JobStates.finished,
+                    JobStates.forced_termination,
+                    JobStates.failed,
+                    JobStates.unknown).contains(signal),
+      true,
+      s"JobState:[$signal] is not to be euthanised."
+    )
   }
 
   /**
@@ -350,39 +366,29 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * and adds that mapping to the active storage. If there is an error during
     * the update, we return the original state w/o modification.
     * @param wfId
-    * @param active the active storage at the time
     * @param jobs the set of jobs we shall be creating workers for
-    * @return the update active storage
+    * @return the updated active storage
     */
-  def startJobs(wfId: WorkflowId)(active: Map[WorkflowId, Map[ActorRef,Job]], lookup: Map[ActorPath, WorkflowId]) : Reader[Vector[Job], Either[(Map[WorkflowId, Map[ActorRef,Job]], Map[ActorPath, WorkflowId]), (Map[WorkflowId, Map[ActorRef, Job]], Map[ActorPath, WorkflowId])]] = Reader{ (jobs: Vector[Job]) ⇒
-    val startedNodes : Either[Throwable, Vector[Option[Boolean]]] = jobs.map(job ⇒ updateWorkflow(wfId)(job.id)(JobStates.start)).sequence
-    startedNodes.bimap(
-      (err: Throwable ) ⇒ (active, lookup),
-      (ys: Vector[Option[Boolean]]) ⇒ {
-        val workers = createWorkers(Set(jobs:_*))
-        activateWorkers(wfId)(workers)
-        (
-          addToActive(wfId)(workers).runS(active).value,
-          addToLookup(wfId)(workers).runS(lookup).value
-        )
-      }
-    )
-  }
-  /**
-    * Attempts to find the workflow from the active storage, removes it and
-    * places it to the failed storage
-    * @param active
-    * @param failed
-    * @param wfId
-    * @return a 2-tuple where (failed + wfId, active - wfId)
-    */
-  def dropWorkflowFromActive(active: Map[WorkflowId, Map[ActorRef, Job]], failed: Map[WorkflowId, Map[ActorRef, Job]]) = Reader{ (wfId: WorkflowId) ⇒
-    Either.cond(
-      active.contains(wfId),
-      (failed + (wfId → active(wfId)), active - wfId),
-      s"[Engine][dropWorkflowFromActive] Did not locate workflow in active storage, weird"
-    )
-  }
+  def startJobs(wfId: WorkflowId) : Reader[Vector[Job], Either[(ActiveWorkflows, WorkersToWorkflow), (ActiveWorkflows, WorkersToWorkflow)]] =
+    Reader{ (jobs: Vector[Job]) ⇒
+      val startedNodes : Either[Throwable, Vector[Option[Boolean]]] = jobs.map(job ⇒ updateWorkflow(wfId)(job.id)(JobStates.start)).sequence
+      startedNodes.bimap(
+        (err: Throwable ) ⇒ (ACTIVE_WORKFLOWS, WORKERS_TO_WF_LOOKUP),
+        (ys: Vector[Option[Boolean]]) ⇒ {
+          createWorkers(Set(jobs: _*)) >>= ((workers:Set[(ActorRef,Job)]) ⇒ {
+            activateWorkers(wfId)(workers)
+            Monad[Id].pure(workers)
+          }) >>= ((workers: Set[(ActorRef, Job)]) ⇒ {
+            addToActive2(wfId)(workers).runS(ACTIVE_WORKFLOWS).value
+            Monad[Id].pure(workers)
+          }) >>= ((workers: Set[(ActorRef, Job)]) ⇒ {
+            addToLookup2(wfId)(workers).runS(WORKERS_TO_WF_LOOKUP).value
+            Monad[Id].pure(workers)
+          })
+          (ACTIVE_WORKFLOWS, WORKERS_TO_WF_LOOKUP)
+        }
+      )
+    }
 
   /**
     * General function invoked when error encountered
@@ -410,19 +416,42 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * Attempts to discover the FSM(s) associated with the given workflow id and
     * issue the [[StopRun]] command
     * @param wfId - workflow id
-    * @param xs - state data
     * @return a Left which indicates a error condition or a Right which indicates success and state is returned.
     */
-  def deactivateWorkers(wfId: WorkflowId) : Reader[WFA, Either[String, WFA]] = Reader { (workflows: WFA) ⇒
-    Either.cond(
-      workflows.contains(wfId),
-      {
-        workflows(wfId).map(actor ⇒ actor._1 ! StopRun)
-        removeFromActive(wfId).runS(workflows).value
-      },
-      s"[DeactivateWorkers] Did not discover workflow $wfId in the internal state."
-    )
-  }
+  def deactivateWorkflowWorkers : Reader[WorkflowId, Either[String, Boolean]] =
+    Reader { (wfId: WorkflowId) ⇒
+      Either.cond(
+        isWorkflowInActiveWorkflows(wfId).runA(ACTIVE_WORKFLOWS).value,
+        lookupWorkersFromActive(wfId).runA(ACTIVE_WORKFLOWS).value.fold(false)((workers: Map[ActorRef,Job]) ⇒ {
+          workers.map(actor ⇒ actor._1 ! StopRun)
+          removeActiveWorkflowsBy(wfId).runA(ACTIVE_WORKFLOWS).value.fold(false)(_ ⇒ true)
+        })
+        ,
+        s"[DeactivateWorkers] Did not discover workflow $wfId in the internal state."
+      )
+    }
+
+  /**
+    * Attempts to discover the FSM(s) associated with the given workflow id and
+    * job id; issue the [[StopRun]] command
+    * @param wfId - workflow id
+    * @param toTerminate - a truth value indicating whether to do it.
+    * @param jobId - job id
+    * @return a Left which indicates a error condition or a Right which indicates success and state is returned.
+    */
+  def deactivateJobWorkerFromActive(wfId: WorkflowId, toTerminate : Boolean) : Reader[JobId, Either[String, Boolean]] =
+    Reader { (jobId: JobId) ⇒
+      Either.cond(
+        toTerminate && isWorkflowInActiveWorkflows(wfId).runA(ACTIVE_WORKFLOWS).value,
+        {
+          lookupWorkersFromActive(wfId).runA(ACTIVE_WORKFLOWS).value.fold(false)((workers: Map[ActorRef,Job]) ⇒ {
+            workers.filter((p: (ActorRef,Job)) ⇒ p._2.id equals jobId).map(p ⇒ p._1 ! StopRun)
+            removeJobFromActive(wfId)(jobId).runA(ACTIVE_WORKFLOWS).value
+          })
+        },
+        s"[Engine][deactivateJobWorkerFromActive] Either jobgraph did not discover workflow $wfId in the internal state OR jobgraph is not allowed to terminate."
+      )
+    }
 
   /**
     * Attempts to cancel the google dataflow jobs by issuing a call to Google.
@@ -430,16 +459,16 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * @param xs - state data
     * @return a Left which indicates a error condition or a Right which indicates success and state is returned.
     */
-  def cancelGoogleDataflowJobs(wfId: WorkflowId) : Reader[Map[GoogleDataflowId, WorkflowId], Either[String, Map[GoogleDataflowId, WorkflowId]]] =
-    Reader { (dataflows: Map[GoogleDataflowId, WorkflowId]) ⇒
-      val gJobs = lookupDataflowBindings(wfId).runA(dataflows).value
+  def cancelGoogleDataflowJobs : Reader[WorkflowId, Either[String, Boolean]] =
+    Reader { (wfId: WorkflowId) ⇒
+      val googleJobs = lookupDataflowBindings(wfId).runA(ACTIVE_DATAFLOW_JOBS).value
       Either.cond(
-        !gJobs.isEmpty,
+        !googleJobs.isEmpty,
         {
-          prohibiters.route(WhatToStop(gJobs), sender())
-          removeFromDataflowBindings(wfId).runA(dataflows).value
+          prohibiters.route(WhatToStop(googleJobs), sender())
+          removeFromDataflowBindings(wfId).runA(ACTIVE_DATAFLOW_JOBS).value
         },
-        s"[cancelGoogleDataflowJobs] Did not discover workflow $wfId in the internal state."
+        s"[Engine][cancelGoogleDataflowJobs] Did not discover workflow $wfId in the internal state."
       )
     }
 
@@ -462,7 +491,7 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
     * @return an actor of type [[JobFSM]]
     */
   def createWorker(jobConfig: JobConfig) =
-    Reader{(ctx: ActorContext) ⇒ ctx.actorOf(backoffOnFailureStrategy(Props(classOf[JobFSM]), s"JobFSM@${java.util.UUID.randomUUID}", jobConfig))}
+    Reader{(ctx: ActorContext) ⇒ ctx.actorOf(backoffOnFailureStrategy(Props(classOf[JobFSM], jobConfig.timeout), s"JobFSM@${java.util.UUID.randomUUID}", jobConfig))}
 
   // Plain'ol lifting
   def lift[A[_] : Monad] = Reader{ (actor: ActorRef) ⇒ Monad[A].pure(actor) }

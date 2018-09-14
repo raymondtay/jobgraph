@@ -154,27 +154,6 @@ trait WorkflowOps extends WorkflowImplicits {
   }
 
   /**
-    * Traverses the given workflow (via [[wfId]]) and attempts to discover the
-    * next nodes to start. See [[Engine]] on how its being used
-    * @param wfId
-    * @param jobId
-    * @param either a [[Either.Left]] value to indicate that the workflow count
-    * not be located in the internal ADT or a [[Either.Right]] carrying the
-    * payload which we are interested in.
-    */
-  def discoverNextJobsToStart(wfId: WorkflowId) : Reader[JobId, Either[String, Vector[Job]]] = Reader{ (jobId: JobId) ⇒
-    work.find(_.id equals wfId).fold[Either[String, Vector[Job]]](Left(s"Cannot discover workflow of the id: $wfId")){
-      workflow ⇒
-        val ancestorsByGroup : Vector[Seq[Job]] =
-          workflow.jobgraph.labfilter(_ equals jobId).nodes.
-            map(n ⇒ workflow.jobgraph.successors(n)).
-            flatten.map(x ⇒ workflow.jobgraph.rdfs(x::Nil))
-
-        ancestorsByGroup.map(group ⇒ group.filter(node ⇒ node.state == JobStates.inactive)).flatten.asRight
-    }
-  }
-
-  /**
     * When the given workflow (i.e. [[wfId]]) is active, this procedure discover the next batch of
     * work with the requirement that for each successor of the given job-id
     * (i.e. [[jobId]]) to be part of the next batch, than all predecessors must be in

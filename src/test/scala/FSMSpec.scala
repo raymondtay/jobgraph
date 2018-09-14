@@ -48,13 +48,15 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
       Matchers with
       BeforeAndAfterEach with BeforeAndAfterAll {
 
+  val timeToWait = 1
+
   override def afterAll {
     TestKit.shutdownActorSystem(system)
   }
 
   "JobFSM always starts at the Idle state" in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM)
+    val fsm = TestFSMRef(new JobFSM(timeToWait))
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
     fsm.stateName == Idle
@@ -63,7 +65,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
   "JobFSM when in 'Idle' state, would end in failure after not receiving any signal from Engine after the timeout expires." in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM, name = "the-fsm-1")
+    val fsm = TestFSMRef(new JobFSM(timeToWait), name = "the-fsm-1")
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
     fsm.stateName == Idle
@@ -77,7 +79,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
   "JobFSM when in 'Idle' state, would stop its run when encountered 'StopRun'." in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM, name = "the-fsm-2")
+    val fsm = TestFSMRef(new JobFSM(timeToWait), name = "the-fsm-2")
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
     fsm.stateName == Idle
@@ -91,7 +93,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
   "JobFSM when in 'Idle' state, would transition to 'Active' state when encountered 'StartRun'." in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM) // the actual JobFSM actor
+    val fsm = TestFSMRef(new JobFSM(timeToWait)) // the actual JobFSM actor
     val engine = TestActorRef(new EngineDummy) // the fake Engine actor
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
@@ -107,7 +109,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
   "JobFSM when in 'Active' state, would stop its run when encountered 'StopRun'." in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM, name = "the-fsm-3") // the actual JobFSM actor
+    val fsm = TestFSMRef(new JobFSM(timeToWait), name = "the-fsm-3") // the actual JobFSM actor
     val engine = TestActorRef(new EngineDummy) // the fake Engine actor
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
@@ -129,7 +131,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
   "JobFSM when in 'Active' state, would proceed its run after waiting for a short period (e.g. 1 second)." in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM, name = "the-fsm-4") // the actual JobFSM actor
+    val fsm = TestFSMRef(new JobFSM(timeToWait), name = "the-fsm-4") // the actual JobFSM actor
     val engine = TestActorRef(new EngineDummy) // the fake Engine actor
 
     val mustBeTypedProperly: TestActorRef[JobFSM] = fsm
@@ -150,7 +152,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
   "JobFSM when in 'Active' state, would proceed its run after waiting for a short period (e.g. 1 second); begin its automatic monitoring run when activated and this run terminates." in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM, name = "the-fsm-5") // the actual JobFSM actor
+    val fsm = TestFSMRef(new JobFSM(timeToWait), name = "the-fsm-5") // the actual JobFSM actor
     val engine = TestActorRef(new EngineDummy) // the fake Engine actor
     val probe = TestProbe("JobFSMSpecs")
     probe.watch(fsm) // watch the [[JobFSM]] actor
@@ -180,7 +182,7 @@ class JobFSMSpecs() extends TestKit(EventLoggingEnabled.system("JobFSMSpecs")) w
 
   "JobFSM when in 'Active' state, would proceed its run after waiting for a short period (e.g. 1 second); begin its automatic monitoring run when activated." in {
     import scala.concurrent.duration._
-    val fsm = TestFSMRef(new JobFSM, "the-fsm-6") // the actual JobFSM actor
+    val fsm = TestFSMRef(new JobFSM(timeToWait), "the-fsm-6") // the actual JobFSM actor
     val engine = TestActorRef(new EngineDummy, "engine-6") // the fake Engine actor
     val probe = TestProbe("JobFSMSpecs")
     probe.watch(fsm) // watch the [[JobFSM]] actor so that we can catch its end-of-life.

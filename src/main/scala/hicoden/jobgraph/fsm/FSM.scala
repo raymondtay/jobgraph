@@ -68,7 +68,15 @@ case class Processing(wfId: WorkflowId,
                       mesosConfig : Option[MesosConfig],
                       jobgraphConfig: Option[JobgraphConfig]) extends Data
 
-class JobFSM extends LoggingFSM[State, Data] with JobContextManifest with JobFSMFunctions {
+/**
+  * JobFSM is the caretaker of a job, infact any Job really. What it is suppose
+  * to do is to kick start the job, attempting to dispatch to running Apache
+  * Mesos cluster(s) and monitors the job's status (iff its a Dataflow job)
+  * otherwise it waits for a status update from the job.
+  * [[timeToWait]] - indicates how long to wait before exiting with a general
+  * failure, which will trigger a restart
+  */
+class JobFSM(timeToWait: Int) extends LoggingFSM[State, Data] with JobContextManifest with JobFSMFunctions {
 
   implicit val actorSystem = context.system
   implicit val actorMaterializer = ActorMaterializer()
@@ -80,9 +88,6 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest with JobFSM
 
   startWith(Idle, Uninitialized)
 
-  // TODO:
-  // (a) Lift timeout to configuration
-  // (b) List out the Engine-triggered events vs FSM internal events
   when (Idle, stateTimeout = 2 second) {
 
      case Event(StopRun, _) ⇒
@@ -106,7 +111,7 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest with JobFSM
       log.info("You called Sire?")
   }
 
-  when(Active) {
+  when(Active, stateTimeout = (timeToWait * secondsIn1Minute).seconds) {
 
     case Event(StopRun, _) ⇒
       log.info("Stopping run")
@@ -146,10 +151,10 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest with JobFSM
           }(sideEffect ⇒ stop(sideEffect()))
         )
 
-
     case Event(StateTimeout, Processing(wfId, job, engineRef, mesosCfg, jgCfg)) ⇒
-      log.info("Finished processing, shutting down.")
-      engineRef ! UpdateWorkflow(wfId, job.id, JobStates.finished)
+      log.info(s"Timeout after ${timeToWait * secondsIn1Minute} seconds; marking job:[${job.id}] as failed.")
+      log.debug(s"Timeout after ${timeToWait * secondsIn1Minute} seconds; marking workflow:[$wfId], job:[${job.id}] as failed.")
+      engineRef ! UpdateWorkflow(wfId, job.id, JobStates.failed)
       stop(FSM.Shutdown)
 
   }
@@ -160,6 +165,8 @@ class JobFSM extends LoggingFSM[State, Data] with JobContextManifest with JobFSM
 
 private[fsm]
 trait JobFSMFunctions {
+
+  val secondsIn1Minute = 60
 
   /**
     * Interprets the result (after parsing the JSON structure returned by

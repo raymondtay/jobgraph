@@ -110,7 +110,12 @@ trait JobCallbacks {
   def extractGoogleDataflowId: Reader[io.circe.Json, Option[String]] = Reader{ (json: io.circe.Json) ⇒
     import io.circe.optics.JsonPath._
     val googleDataflowId = root.google_dataflow_id.string
-    googleDataflowId.getOption(json)
+    val r = googleDataflowId.getOption(json)
+    println(s"""
+      given : ${json.noSpaces}
+      so what did we find here: $r
+      """)
+    r
   }
 
   /**

@@ -23,6 +23,7 @@ import com.typesafe.scalalogging.Logger
  * - Loads the hydrates the workflow and job configurations (in-memory and
  *   persistent storage)
  * - Loads the engine's configuration (in-memory)
+ * - Interprets the DirectRunner's job status
  *
  * @author Raymond Tay
  * @verison 1.0
@@ -37,6 +38,92 @@ trait EngineOps extends Concretizer with DatabaseOps {
   object EngineCfgParser extends EngineConfigParser
 
   val logger : Logger = Logger(classOf[EngineOps])
+
+  //
+  // NOTE: DO NOT MANIPULATE THE FOLLOWING ADTS DIRECTLY !!!
+  //       Do use the State Monad functions, augment your own if you need to 
+  //
+  //
+
+  /* Mapping of job configuration (indexed by ids) to their model */
+  var JDT : JobDescriptors = _
+
+  /* Mapping of workflow configuration (indexed by ids) to their model */
+  var WFDT : WorkflowDescriptors = _
+
+
+  def updateJDTNWFDTTableState : Reader[(JobDescriptors,WorkflowDescriptors), Either[_, (JobDescriptors, WorkflowDescriptors)]] =
+    Reader{ (p: (JobDescriptors,WorkflowDescriptors)) ⇒
+      p.bimap(l ⇒ setJDT(l.map), r ⇒ setWFDT(r.map)).bimap(_.runS(p._1).value, _.runS(p._2).value).asRight
+    }
+
+  /**
+    * The primary validation scheme here would be to make sure the runners
+    * indicated is legal and the job ids indicated in the payload do exist in
+    * our current system configuration; it doesn't make much sense to validate
+    * the rest of the overrides because they are context-dependent i.e. only
+    * the job that needs these overrides would know exactly what to do with it.
+    *
+    * CAUTION: as the job descriptor table is not concurrent safe, which means
+    * there is a chance that we might report missing job entries in the system
+    * @param overrides
+    * @return Left(validation-failure) or Right(true)
+    */
+  def validateJobOverrides : Reader[JobConfigOverrides, Option[List[Int]]] =
+    Reader{ (overrides:JobConfigOverrides) ⇒
+      if (JDT.map.isEmpty) none
+      else {
+        val incoming = Set(overrides.overrides.collect{ case c ⇒ c.id }:_*)
+        val intersect = JDT.map.keySet & incoming
+
+        if (intersect.isEmpty) none // absolutely nothing in common
+        else if ((intersect & incoming) == intersect) incoming.toList.some // everything indicated is there
+        else none // accounts for everything else
+      }
+    }
+
+  // Set the [[JobDescriptorTable]] into the State object
+  private
+  def setJDT(datum: JobDescriptorTable) : State[JobDescriptors, Boolean] =
+    for {
+      x  ← State.get[JobDescriptors]
+      _  ← State.modify((s: JobDescriptors) ⇒ s.copy(map = datum))
+      x2 ← State.get[JobDescriptors]
+    } yield {
+      JDT = x2
+      true
+    }
+
+  // Set the [[WorkflowDescriptorTable]] into the State object
+  private
+  def setWFDT(datum: WorkflowDescriptorTable) : State[WorkflowDescriptors, Boolean] =
+    for {
+      x  ← State.get[WorkflowDescriptors]
+      _  ← State.modify((s: WorkflowDescriptors) ⇒ s.copy(map = datum))
+      x2 ← State.get[WorkflowDescriptors]
+    } yield {
+      WFDT = x2
+      true
+    }
+
+  /**
+    * State function that adds the job configuration to the job
+    * descriptor table and returns this updated version.
+    * @param jobConfig
+    * @param jdt
+    * @return updated Job Descriptor Table
+    */
+  def addNewJob = Reader{ (jobConfig: JobConfig) ⇒
+    for {
+      s  ← State.get[JobDescriptors]
+      _  ← State.modify{(dt: JobDescriptors) ⇒ dt.copy(map = StepOps.hydrateJobConfigs(jobConfig :: Nil).runS(dt.map).value)}
+      s2 ← State.get[JobDescriptors]
+    } yield {
+      JDT = s2
+      true
+    }
+  }
+
 
   /**
     * Loads the Apache Mesos Config
@@ -162,22 +249,24 @@ trait EngineOps extends Concretizer with DatabaseOps {
     * @param jdt
     * @return Update0 - it's doobie's representation of a sql statement
     */
-  def fillDatabaseJobConfigs : Reader[JobDescriptorTable, Update0] =
-    Reader{ (jdt: JobDescriptorTable) ⇒
-      import doobie.implicits._
-      jdt.values.map(jobConfigOp(_)).reduce(_ ++ _).update
-    }
+  def fillDatabaseJobConfigs : State[JobDescriptors, Update0] = {
+    import doobie.implicits._
+    for {
+      jdt ← State.get[JobDescriptors]
+    } yield jdt.map.values.map(jobConfigOp(_)).reduce(_ ++ _).update
+  }
 
   /**
     * Build the SQL statement and bunch them up
     * @param wfdt
     * @return Update0 - it's doobie's representation of a sql statement
     */
-  def fillDatabaseWorkflowConfigs : Reader[WorkflowDescriptorTable, Update0] =
-    Reader{ (wfdt: WorkflowDescriptorTable) ⇒
-      import doobie.implicits._
-      wfdt.values.map(workflowConfigOp(_)).reduce(_ ++ _).update
-    }
+  def fillDatabaseWorkflowConfigs : State[WorkflowDescriptors, Update0] = {
+    import doobie.implicits._
+    for {
+      wfdt ← State.get[WorkflowDescriptors]
+    } yield wfdt.map.values.map(workflowConfigOp(_)).reduce(_ ++ _).update
+  }
 
   /** 
     * Adds new workflow configuration to the database table [[workflow_template]]
@@ -224,40 +313,15 @@ trait EngineOps extends Concretizer with DatabaseOps {
   }
 
   /**
-    * The primary validation scheme here would be to make sure the runners
-    * indicated is legal and the job ids indicated in the payload do exist in
-    * our current system configuration; it doesn't make much sense to validate
-    * the rest of the overrides because they are context-dependent i.e. only
-    * the job that needs these overrides would know exactly what to do with it.
-    *
-    * CAUTION: as the job descriptor table is not concurrent safe, which means
-    * there is a chance that we might report missing job entries in the system
-    * @param overrides
-    * @return Left(validation-failure) or Right(true)
-    */
-  def validateJobOverrides(jdt: JobDescriptorTable) : Reader[JobConfigOverrides, Option[List[Int]]] =
-    Reader{ (overrides:JobConfigOverrides) ⇒
-      if (jdt.isEmpty) none
-      else {
-        val incoming = Set(overrides.overrides.collect{ case c ⇒ c.id }:_*)
-        val intersect = jdt.keySet & incoming
-
-        if (intersect.isEmpty) none // absolutely nothing in common
-        else if ((intersect & incoming) == intersect) incoming.toList.some // everything indicated is there
-        else none // accounts for everything else
-      }
-    }
-
-  /**
     * Returns all workflows currently present in the system; pagination
     * mechanism would be implemented at a later stage.
     * @param wfdt
     * @return a container where each value is a [[WorkflowConfig]] object
     */
-  def getAllWorkflows : State[WorkflowDescriptorTable, List[WorkflowConfig]] =
+  def getAllWorkflows : State[WorkflowDescriptors, List[WorkflowConfig]] =
     for {
-      s ← State.get[WorkflowDescriptorTable]
-    } yield s.values.toList
+      s ← State.get[WorkflowDescriptors]
+    } yield s.map.values.toList
 
   /**
     * Returns all job configurations currently present in the system; pagination
@@ -265,10 +329,10 @@ trait EngineOps extends Concretizer with DatabaseOps {
     * @param wfdt
     * @return a container where each value is a [[JobConfig]] object
     */
-  def getAllJobs : State[JobDescriptorTable, List[JobConfig]] =
+  def getAllJobs : State[JobDescriptors, List[JobConfig]] =
     for {
-      s ← State.get[JobDescriptorTable]
-    } yield s.values.toList
+      s ← State.get[JobDescriptors]
+    } yield s.map.values.toList
 
   /**
    * Attempt to load the workflow by indexing its index in the configuration
@@ -279,10 +343,10 @@ trait EngineOps extends Concretizer with DatabaseOps {
    * @param wfdt
    * @return Some((List of [[LNode]], List of [[LEdge]])) or none
    */
-  def extractWorkflowConfigBy(workflowIndex: Int, jobOverrides: Option[JobConfigOverrides])(implicit jdt : JobDescriptorTable, wfdt: WorkflowDescriptorTable) : Option[(List[LNode[Job,JobId]], List[LEdge[Job,String]])]= {
-    if (wfdt.contains(workflowIndex))
+  def extractWorkflowConfigBy(workflowIndex: Int, jobOverrides: Option[JobConfigOverrides])(implicit jdt : JobDescriptors, wfdt: WorkflowDescriptors) : Option[(List[LNode[Job,JobId]], List[LEdge[Job,String]])]= {
+    if (wfdt.map.contains(workflowIndex))
       for {
-        (nodes, edges) ← reify(jdt)(wfdt(workflowIndex)).toOption
+        (nodes, edges) ← reify(jdt.map)(wfdt.map(workflowIndex)).toOption
       } yield jobOverrides.fold((nodes, edges))(overrides ⇒ mergeN(nodes, overrides) >>= ((updatedJobs:List[Job]) => (List.empty[LNode[Job,JobId]], mergeE(edges, updatedJobs))))
     else none
   }
@@ -329,12 +393,13 @@ trait EngineOps extends Concretizer with DatabaseOps {
     *   is used to reference the job in the workflow DAG
     * - The dataflow must contain the right [[RunnerType]] [[ExecType]] pair
     *   else it is consider illegal
+    * @param JDT
     * @param jobConfig
     * @return Some(jobConfig) else none
     */
-  def validateJobSubmission(implicit jdt: JobDescriptorTable) : Reader[JobConfig, Option[JobConfig]] =
+  def validateJobSubmission(jdt: JobDescriptors) : Reader[JobConfig, Option[JobConfig]] =
     Reader{ (jCfg: JobConfig) ⇒
-      if (isJobConfigPresent(jdt)(jCfg)) none else {
+      if (isJobConfigPresent(jCfg).runA(jdt).value) none else {
         val splitted = jCfg.runner.runner.split(":")
         if (splitted.size != 2) { logger.error(s"Runner configuration is invalid"); none }
         else {
@@ -348,8 +413,10 @@ trait EngineOps extends Concretizer with DatabaseOps {
 
   // The JDT is a indexed structure; so a check is made to see if its already
   // there - the user cannot override the configuration.
-  private def isJobConfigPresent(implicit jdt: JobDescriptorTable) = Reader{ (jCfg: JobConfig) ⇒
-    if (jdt.contains(jCfg.id)) true else false
+  private def isJobConfigPresent = Reader{ (jCfg: JobConfig) ⇒
+    for {
+      s ← State.get[JobDescriptors]
+    } yield s.map.contains(jCfg.id)
   }
 
   /**
@@ -359,11 +426,11 @@ trait EngineOps extends Concretizer with DatabaseOps {
     * @param wfConfig
     * @return Some(<workflow index>) else none
     */
-  def validateWorkflowSubmission(implicit jdt: JobDescriptorTable, wfdt: WorkflowDescriptorTable) : Reader[WorkflowConfig, Option[WorkflowConfig]] =
+  def validateWorkflowSubmission(jdt: JobDescriptors, wfdt: WorkflowDescriptors) : Reader[WorkflowConfig, Option[WorkflowConfig]] =
     Reader{ (wfConfig: WorkflowConfig) ⇒
       if (isWorkflowIndexExisting(wfdt)(wfConfig)) none
       else
-      reify(jdt)(wfConfig).fold(
+      reify(jdt.map)(wfConfig).fold(
         errors ⇒ none,
         (nodeEdges: (List[quiver.LNode[Job,JobId]], List[LEdge[Job,String]])) ⇒ {
           val jobgraph = mkGraph(nodeEdges._1, nodeEdges._2)
@@ -381,9 +448,9 @@ trait EngineOps extends Concretizer with DatabaseOps {
   // Detects whether the workflow is already present in the system i.e.
   // in-memory.
   private
-  def isWorkflowIndexExisting(implicit wfdt: WorkflowDescriptorTable) : Reader[WorkflowConfig, Boolean] =
+  def isWorkflowIndexExisting(wfdt: WorkflowDescriptors) : Reader[WorkflowConfig, Boolean] =
     Reader{ (wfConfig: WorkflowConfig) ⇒
-      if (wfdt.contains(wfConfig.id)) true else false
+      if (wfdt.map.contains(wfConfig.id)) true else false
     }
 
   /**
@@ -393,31 +460,17 @@ trait EngineOps extends Concretizer with DatabaseOps {
     * @param wfdt
     * @return updated Workflow Descriptor Table
     */
-  def addNewWorkflow = Reader{ (wfConfig: WorkflowConfig) ⇒
+  def addNewWorkflowToWFDT = Reader{ (wfConfig: WorkflowConfig) ⇒
     for {
-      s  ← State.get[WorkflowDescriptorTable]
-      _  ← State.modify{(dt: WorkflowDescriptorTable) ⇒
-             WfOps.hydrateWorkflowConfigs(wfConfig :: Nil).runS(dt).value
+      s  ← State.get[WorkflowDescriptors]
+      _  ← State.modify{(dt: WorkflowDescriptors) ⇒
+             dt.copy(map = WfOps.hydrateWorkflowConfigs(wfConfig :: Nil).runS(dt.map).value)
            }
-      s2 ← State.get[WorkflowDescriptorTable]
-    } yield s2
-  }
-
-  /**
-    * State function that adds the job configuration to the job
-    * descriptor table and returns this updated version.
-    * @param jobConfig
-    * @param jdt
-    * @return updated Job Descriptor Table
-    */
-  def addNewJob = Reader{ (jobConfig: JobConfig) ⇒
-    for {
-      s  ← State.get[JobDescriptorTable]
-      _  ← State.modify{(dt: JobDescriptorTable) ⇒
-             StepOps.hydrateJobConfigs(jobConfig :: Nil).runS(dt).value
-           }
-      s2 ← State.get[JobDescriptorTable]
-    } yield s2
+      s2 ← State.get[WorkflowDescriptors]
+    } yield {
+      WFDT = s2
+      true
+    }
   }
 
 }
