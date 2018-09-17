@@ -258,10 +258,8 @@ class Engine(initDb: Option[Boolean] = None,jobNamespaces: List[String], workflo
           ns   ← EitherT(stopWorkflow(wfId))
           wfs  ← EitherT(deactivateWorkflowWorkers(wfId))
           dfs  ← EitherT(cancelGoogleDataflowJobs(wfId))
+          rowC ← EitherT(updateWorkflowNJobStatusToDatabase(wfId)(ns)(rollbackXa))
         } yield {
-          (updateWorkflowStatusToDatabase(WorkflowStates.forced_termination)(wfId).run.attempt *> 
-           updateJobStatusToDatabase(JobStates.forced_termination)(ns).run.attempt
-          ).transact(rollbackXa).unsafeRunSync
           logger.info("[Engine][StopWorkflow] {} nodes were updated for workflow id:{} and should be stopped.", ns.size, wfId)
         }
       },

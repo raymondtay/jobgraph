@@ -52,9 +52,39 @@ trait EngineOps extends Concretizer with DatabaseOps {
   var WFDT : WorkflowDescriptors = _
 
 
+  /**
+    * Sets the internal state of the Engine with the given job and workflow
+    * configuration descriptors
+    * @param 2-tuple (jobdescriptors, workflowdescriptors)
+    * @param 2 state objects
+    * @return Right((job descriptor state object, workflow descriptor state object))
+    */
   def updateJDTNWFDTTableState : Reader[(JobDescriptors,WorkflowDescriptors), Either[_, (JobDescriptors, WorkflowDescriptors)]] =
     Reader{ (p: (JobDescriptors,WorkflowDescriptors)) ⇒
       p.bimap(l ⇒ setJDT(l.map), r ⇒ setWFDT(r.map)).bimap(_.runS(p._1).value, _.runS(p._2).value).asRight
+    }
+
+  /**
+    * Updates the status of the workflow and associated jobs to the database
+    * @param wfId
+    * @param jobs
+    * @param rollbackXa database transactor that would rollback when an error
+    *                   is detected
+    */
+  def updateWorkflowNJobStatusToDatabase(workflowId: WorkflowId)(jobs: List[Job]) : Reader[Transactor[cats.effect.IO], Either[String,Int]] =
+    Reader { (rollbackXa: Transactor[cats.effect.IO]) ⇒
+      import doobie._
+      import doobie.implicits._ // this is where the "quick" method comes into play
+      import doobie.postgres._
+      import doobie.postgres.implicits._
+      import cats._
+      import cats.data._
+      import cats.effect.IO
+      import cats.implicits._
+
+      (updateWorkflowStatusToDatabase(WorkflowStates.forced_termination)(workflowId).run.attempt *> 
+       updateJobStatusToDatabase(JobStates.forced_termination)(jobs).run.attempt
+      ).transact(rollbackXa).unsafeRunSync.bimap(error ⇒ error.getMessage, identity)
     }
 
   /**
