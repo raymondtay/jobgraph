@@ -14,6 +14,7 @@ object Functions {
   // Builds the command to run the [[MesosScioRunner]]
   // e.g. MesosScioJob --task=/home/hicoden/wordcount-0.1.0-SNAPSHOT/bin/wordcount
   //                   --mesos_master=10.148.0.2:5050
+  //                   --sessionId=<workflowId in UUID>
   //                   --run_as=donkey
   //                   --timeout=5
   //                   --task_name="WordCount Google Dataflow"
@@ -21,7 +22,7 @@ object Functions {
   def buildMesosCommand : Reader[MesosJobContext, (String,String,Map[String,String])] = Reader{ (cfg: MesosJobContext) ⇒
     def spaceToUnderscore(s: String) = (for { c ← s } yield { if (c == ' ') '_' else c }).mkString
 
-    def buildTask = s"""--task=${cfg.jobCtx.runner.module} --task_name='${spaceToUnderscore(cfg.jobCtx.name)}' --run_as=${cfg.runAs} --timeout=${cfg.jobCtx.timeout}"""
+    def buildTask = s"""--task=${cfg.jobCtx.runner.module} --sessionId=${cfg.jobCtx.workflowId.toString} --task_name='${spaceToUnderscore(cfg.jobCtx.name)}' --run_as=${cfg.runAs} --timeout=${cfg.jobCtx.timeout}"""
     def buildMesosUri = s"""--mesos_master=${cfg.mesosCtx.hostname}:${cfg.mesosCtx.hostport}"""
 
     (s"""${cfg.taskExec} ${buildTask} ${buildMesosUri} ${(cfg.jobCtx.runner.cliargs :+ s"--callback=http://${cfg.jobCtx.location.hostname}:${cfg.jobCtx.location.port}/flows/${cfg.jobCtx.workflowId}/job/${cfg.jobCtx.jobId}").mkString(" ")}""", "", Map.empty[String,String])
@@ -37,11 +38,11 @@ object Functions {
   }
 
   def buildPythonCommand : Reader[JobContext, (String,String,Map[String,String])] = Reader{ (cfg: JobContext) ⇒
-    (s"python -m ${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback http://${cfg.location.hostname}:${cfg.location.port}/flows/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("PYTHONPATH" -> cfg.workdir))
+    (s"python -m ${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--sessionId ${cfg.workflowId.toString}" :+ s"--callback http://${cfg.location.hostname}:${cfg.location.port}/flows/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("PYTHONPATH" -> cfg.workdir))
   }
 
   def buildJavaCommand : Reader[JobContext, (String,String,Map[String,String])] = Reader{ (cfg: JobContext) ⇒
-    (s"${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--callback=http://${cfg.location.hostname}:${cfg.location.port}/flows/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("CLASSPATH" -> cfg.workdir))
+    (s"${cfg.runner.module} ${(cfg.runner.cliargs :+ s"--sessionId=${cfg.workflowId.toString}" :+ s"--callback=http://${cfg.location.hostname}:${cfg.location.port}/flows/${cfg.workflowId}/job/${cfg.jobId}").mkString(" ")}", cfg.workdir, Map("CLASSPATH" -> cfg.workdir))
   }
 
 }
