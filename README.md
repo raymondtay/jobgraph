@@ -1,5 +1,7 @@
 # jobgraph
 
+![Cats Friendly Badge](https://typelevel.org/cats/img/cats-badge-tiny.png)
+
 # What it does
 
 This is an engine that allows you to do two things:
