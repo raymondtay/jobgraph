@@ -139,7 +139,10 @@ for more details.
   - Work completed in [HCD-63](https://nugitco.atlassian.net/browse/HCD-63)
 - 
 
-We will be plugging these soon.
+**Note:**
+
+* I will no longer be contributing to this work.
+* There are 2 presentations i did in a Scala meetup: you can find them [here](./presentation)
 
 # References
 - See the `install_postgresql.md` on instructions to install postgresql database version 9.6
