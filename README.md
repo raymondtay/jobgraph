@@ -1,20 +1,30 @@
-# jobgraph
+# Job Graph
+
+The problem this engine solves was to apply transformation logic to unbounded datasets.
+The unbounded dataset problem had essentially two faces:
+
+* The size of the dataset was undeterministic (i.e. data arrives like gushing out of a _hose_ or trickling through a _tap_ at a periodic rate etc)
+* You never know quite when the datum would arrive (Most frameworks had little or no support for handling _out of order_ events, late arriving events etc)
+
+The Dataflow Model paper by Google first laid the major ideas on how such a framework would work to solve this problem; the TLDR version of this story
+is that Google contributed to Apache Beam which is lifted into a _cloud-native_ approach and came to be known as Google Dataflow. This was great because the Apache Beam implementation allow data processing functions to be defined and developers can create data pipelines by _chaining_ these functions which essentially creates a graph processing topology; for the computer science geeks amongst you, you would know it as a DAG.
+
+I thought Apache Beam was great! but it didn't really solve my problem for two (2) reasons:
+
+* The Apache Beam functions only allow ETLs to be defined using _homogeneous_ approach i.e. Apache Beam Python ETL or Java ETLs; _mixins_ were not supported
+* The [Google Dataflow](https://cloud.google.com/dataflow) was a SaaS solution and i needed the solution to be delivered via a cloud-native approach via IaC
+
+What was the need? I needed the mixin-approach for a simple reason is that we were migrating a large number of already built data pipelines and with a little effort, we can de-compose these ETLs and re-integrate them into _jobgraph_; the second need was simply because i did not wish to be 100% reliant on Google's Dataflow and there were other additional niceties we can built into the architecture (one of these niceties was to execute the pipelines locally in the private DC).
+
+Hence, the need for _**JobGraph**_ ☺
 
 ![Cats Friendly Badge](https://typelevel.org/cats/img/cats-badge-tiny.png)
 
-# What it does
+# Job Graph Internals
 
-This is an engine that allows you to do two things:
-- Define `job`(s) in the system and create `workflow`(s) using that and submits
-  it to a Apache Beam framework for execution
-- To do all that, you have to write jobs using Apache Beam's programming model
-- Craft a processing graph which details your execution dependency and submit
-  that to `jobgraph` and it takes care of executing the job for
-  you;automatically monitors the job and starts the next dependencies once it
-  has completed.
+There is no restriction on the nature of what a JobGraph job does, you can create anything you like (i.e. Python or Java programs, Apache Beam processing functions) and have their binaries readily available via Java or Python's mechanism. When you are ready, you can _chain_ these jobs into pipelines for unit-testing / integration-testing or production delivery.
 
-In the architecture you are about to see, it is designed to have the
-flexibility to run Apache Beam jobs either in :
+The execution choices of JobGraph pipelines is :
 
 * (a) Same host as `JobGraph` i.e. _local-mode_ (*Note:* Not recommended)
 * (b) Delegate to Google Dataflow infrastructure
@@ -64,11 +74,10 @@ Basic idea is to provide a mechanism that allows the user to define:
 - What a _step_ (aka Job) is
   - That usually means a format has to be defined
   - A step is, for now, a `Apache Beam` job (i.e. runnable) and `jobgraph` is responsible for starting the job.
-- How to describe a _workflow_ by stringing 1 or more _steps_ 
+- How to describe a _workflow_ by chaining 1 or more _steps_ 
   - A configuration file (e.g. see [[workflows.conf]]) would describe how the computation would proceeed by definining a _job graph_. Take note that the steps defined in _ANY_ workflow must already exist in the system.
 - The _job graph_ defines the node(s) where the system will wait. In other
   words, the system is designed to be asynchronous by default unless otherwise.
-- A few common operations to be provided 
 
 ## What's a Job
 
